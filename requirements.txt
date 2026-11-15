@@ -1,7 +1,5 @@
+google-genai
+reportlab
 fastapi
 uvicorn
-python-telegram-bot==20.7
-google-genai
-pydantic
-reportlab
 requests
