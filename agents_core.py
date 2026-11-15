@@ -8,6 +8,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
+# 初始化 Gemini 客戶端 (從環境變數讀取 API Key，Render 中需在 Settings -> Environment Variables 設定)
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 # ================= 企業官方資料與最新發票範本規範 =================
@@ -33,9 +34,12 @@ COMPANY_KNOWLEDGE = """
 def create_official_pdf(client_name: str, client_attn: str, invoice_no: str, subject: str, items_json: str, discount_note: str, original_price: float, discount_amount: float) -> str:
     """
     工具：完全依照 INV-10051 最新範本生成專業 A4 PDF 發票/報價單。
+    返回生成的 PDF 檔案本地路徑。
     """
     items = json.loads(items_json)
-    filename = f"/tmp/{invoice_no}_{client_name.replace(' ', '_')}.pdf"
+    # 使用 Render 的 /tmp 目錄，這是臨時可寫目錄
+    safe_client_name = "".join(c for c in client_name if c.isalnum() or c in (' ', '_')).rstrip()
+    filename = f"/tmp/{invoice_no}_{safe_client_name.replace(' ', '_')}.pdf"
     
     # A4 頁面與邊距設定 (確保不超過 2 頁)
     doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
@@ -47,7 +51,8 @@ def create_official_pdf(client_name: str, client_attn: str, invoice_no: str, sub
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle('Title', parent=styles['Normal'], fontName=font_name, fontSize=16, alignment=1, textColor=colors.HexColor("#1A365D"))
     normal_style = ParagraphStyle('NormalCN', parent=styles['Normal'], fontName=font_name, fontSize=9, leading=13)
-    bold_style = ParagraphStyle('BoldCN', parent=normal_style, fontName=font_name, fontSize=9, textColor=colors.HexColor("#1A365D"), fontName='Helvetica-Bold')
+    # 【已修復】移除了重複的 fontName 參數，只保留 Helvetica-Bold
+    bold_style = ParagraphStyle('BoldCN', parent=normal_style, fontName='Helvetica-Bold', fontSize=9, textColor=colors.HexColor("#1A365D"))
 
     # 1. 頂部公司標頭
     story.append(Paragraph("<b>CIVEXA CONSTRUCTION</b>", title_style))
@@ -145,8 +150,10 @@ State reference clearly to avoid processing delays.
     sig_table = Table(sig_data, colWidths=[300, 240])
     story.append(sig_table)
 
+    # 生成 PDF
     doc.build(story)
     return filename
+
 
 # ================= 多 Agent 總指揮調度系統 =================
 def run_multi_agent_system(user_message: str):
@@ -159,11 +166,13 @@ def run_multi_agent_system(user_message: str):
 
 【工作準則】
 - 當老闆要求開立新發票（例如 INV-10052）時，請自動解析老闆提供的**新顧客名稱、聯繫人、工程主旨、明細內容、原價與特別優惠折扣金額**。
-- **必須主動調用 `create_official_pdf` 工具**生成正式 PDF 發票，並在 Telegram 回覆中確認發票編號與總金額。
+- **必須主動調用 `create_official_pdf` 工具**生成正式 PDF 發票，並在回覆中確認發票編號與總金額。
+- 如果用戶只是普通問候，請以專業、簡潔的管家語氣回覆。
 """
 
+    # 新版 google-genai SDK 支援直接傳入 Python function，會自動處理調用與結果回填
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-2.0-flash", # 建議使用 2.0-flash，速度更快且 function calling 更穩定
         contents=user_message,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
@@ -172,11 +181,20 @@ def run_multi_agent_system(user_message: str):
         )
     )
 
+    # 提取自動函數調用歷史中的 PDF 路徑
     generated_pdf_path = None
-    if response.automatic_function_calling_history:
+    if hasattr(response, 'automatic_function_calling_history') and response.automatic_function_calling_history:
         for step in response.automatic_function_calling_history:
             for part in step.parts:
-                if part.function_response and part.function_response.name == "create_official_pdf":
-                    generated_pdf_path = part.function_response.response.get("result")
+                if hasattr(part, 'function_response') and part.function_response and part.function_response.name == "create_official_pdf":
+                    resp_data = part.function_response.response
+                    # 兼容處理：response 可能是 dict 或直接是 string
+                    if isinstance(resp_data, dict):
+                        generated_pdf_path = resp_data.get("result")
+                    else:
+                        generated_pdf_path = str(resp_data)
+                    break
+            if generated_pdf_path:
+                break
 
     return response.text, generated_pdf_path
