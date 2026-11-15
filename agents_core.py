@@ -5,29 +5,67 @@ from google import genai
 from google.genai import types
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
-                                TableStyle, KeepTogether)
+from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle)
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
+# 初始化 Gemini 客戶端
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-# ================= 企业官方资料与最新发票范本规范 (严格对齐 INV-10051) =================
-COMPANY_KNOWLEDGE = """
-【企业官方资讯】
-- 公司名称：CIVEXA CONSTRUCTION
-- 资质与注册：CIDB Registered Contractor | Company Reg. No: 003666333-A
-- 公司地址：48, Jalan Nuri 7/5, Kota Damansara, 47810 Petaling Jaya, Selangor
-- 联系方式：Email: civexa2@gmail.com | Tel: 012-208 5595
-- 收款银行与账号：Maybank | Account Name: CIVEXA CONSTRUCTION | Account No: 5142-0890-0031
-- 默认货币：RM (马来西亚林吉特)
+# ================= 發票防重登記簿 (存儲在 Render 的 /tmp 目錄) =================
+LEDGER_FILE = "/tmp/invoice_ledger.json"
 
-【最新发票排版与编号规范 (参考 INV-10051 格式)】
-- 发票编号格式：INV-10052（后续自动递增，如 INV-10053 等）
-- 日期格式：必须使用"序数+完整月份"，例如 4th November 2026、11th November 2026（不要缩写、不要前导零）
-- 单据期限：发票日期起算 7 天内 (Due Date)
-- 折扣标签：必须使用 "Loyal Customer Discount"（不是 Special Discount）
-- 价格备注：在价格表上方必须有一行 "Note:" 说明特别优惠价与涵盖范围
-- 页面限制：严格控制版面，确保单张 A4 Invoice 绝不超过 2 页
+def _load_ledger():
+    if not os.path.exists(LEDGER_FILE):
+        return {}
+    with open(LEDGER_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def _save_ledger(ledger):
+    with open(LEDGER_FILE, "w", encoding="utf-8") as f:
+        json.dump(ledger, f, indent=2, ensure_ascii=False)
+
+def check_invoice_status(invoice_no: str) -> str:
+    """
+    工具：檢查發票是否已開立。
+    如果已存在，返回警告；如果不存在，返回允許。
+    """
+    ledger = _load_ledger()
+    if invoice_no in ledger:
+        info = ledger[invoice_no]
+        return f"⚠️ 警告：發票 {invoice_no} 已經於 {info['date']} 開立給 {info['client']}，金額 RM {info['amount']}。請勿重複開立。"
+    return f"✅ 確認：發票 {invoice_no} 尚未開立，可以繼續生成。"
+
+def register_invoice(invoice_no: str, client_name: str, amount: float) -> str:
+    """
+    工具：在登記簿中記錄新發票，防止未來重複。
+    """
+    ledger = _load_ledger()
+    ledger[invoice_no] = {
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "client": client_name,
+        "amount": float(amount)
+    }
+    _save_ledger(ledger)
+    return f"✅ 已成功登記發票 {invoice_no} (客戶: {client_name}, 金額: RM {amount}) 到系統帳冊。"
+
+
+# ================= 企業官方資料與最新發票範本規範 =================
+COMPANY_KNOWLEDGE = """
+【企業官方資訊】
+- 公司名稱：CIVEXA CONSTRUCTION
+- 資質與註冊：CIDB Registered Contractor | Company Reg. No: 003666333-A
+- 公司地址：48, Jalan Nuri 7/5, Kota Damansara, 47810 Petaling Jaya, Selangor
+- 聯絡方式：Email: civexa2@gmail.com | Tel: 012-208 5595
+- 收款銀行與賬號：Maybank | Account Name: CIVEXA CONSTRUCTION | Account No: 5142-0890-0031
+- 默認貨幣：RM (馬來西亞林吉特)
+
+【最新發票排版與編號規範 (嚴格對齊 INV-10051)】
+- 發票編號格式：INV-10052（後續自動遞增）
+- 日期格式：必須使用"序數+完整月份"，例如 4th November 2026（不要縮寫、不要前導零）
+- 單據期限：發票日期起算 7 天內 (Due Date)
+- 折扣標籤：必須使用 "Loyal Customer Discount"（絕對不能用 Special Discount）
+- 價格備註：在價格表上方必須有一行 "Note:" 說明特別優惠價與涵蓋範圍
+- 頁面限制：嚴格控制版面，確保單張 A4 Invoice 絕不超過 2 頁
 """
 
 def _format_date_ordinal(d: datetime) -> str:
@@ -43,16 +81,10 @@ def create_official_pdf(client_name: str, client_attn: str, invoice_no: str,
                         subject: str, items_json: str, note_text: str,
                         original_price: float, discount_amount: float) -> str:
     """
-    工具：完全依照 INV-10051 范本生成专业 A4 PDF 发票/报价单。
-    参数 items_json 必须是 JSON 字符串，格式：
-      [{"title": "20mm Copper Water Pipe Leakage Repair Works",
-        "details": ["Repair of damaged and leaking 20mm copper water pipe, including:",
-                    "Cutting and removal of the damaged section",
-                    "Reconnection and replacement using old copper pipe supplied by customer",
-                    "Supply and installation of fitting ring"]}]
-    返回生成的 PDF 本地路径。
+    工具：完全依照 INV-10051 範本生成專業 A4 PDF 發票/報價單（無簽名線，乾淨版）。
+    返回生成的 PDF 本地路徑。
     """
-    # 【稳健性修复】兼容 AI 传成 list 或字符串，且解析失败不崩服务
+    # 【穩健性修復】兼容 AI 傳成 list 或字符串，且解析失敗不崩服務
     try:
         items = json.loads(items_json) if isinstance(items_json, str) else items_json
         if not isinstance(items, list):
@@ -73,7 +105,6 @@ def create_official_pdf(client_name: str, client_attn: str, invoice_no: str,
                                  fontSize=16, alignment=1, textColor=colors.HexColor("#1A365D"))
     normal_style = ParagraphStyle("NormalCN", parent=styles["Normal"], fontName=font_name,
                                   fontSize=9, leading=13)
-    # 【语法修复】fontName 只保留一次，使用 Helvetica-Bold
     bold_style = ParagraphStyle("BoldCN", parent=normal_style, fontName="Helvetica-Bold",
                                 fontSize=9, textColor=colors.HexColor("#1A365D"))
 
@@ -82,7 +113,7 @@ def create_official_pdf(client_name: str, client_attn: str, invoice_no: str,
     inv_date_str = _format_date_ordinal(inv_date)
     due_date_str = _format_date_ordinal(due_date)
 
-    # 1. 顶部公司标头
+    # 1. 頂部公司標頭
     story.append(Paragraph("<b>CIVEXA CONSTRUCTION</b>", title_style))
     story.append(Paragraph(
         "<font size=8 color='#555555'>CIDB Registered Contractor | Company Reg. No: 003666333-A<br/>"
@@ -94,7 +125,7 @@ def create_official_pdf(client_name: str, client_attn: str, invoice_no: str,
                                           textColor=colors.HexColor("#2B6CB0"))))
     story.append(Spacer(1, 10))
 
-    # 2. 客户与发票资讯区块（日期使用序数格式）
+    # 2. 客戶與發票資訊區塊
     info_data = [[
         Paragraph(f"<b>BILL TO:</b><br/><b>{client_name}</b><br/>Attn: {client_attn}", normal_style),
         Paragraph(f"<b>INVOICE INFORMATION:</b><br/>Invoice Number: <b>{invoice_no}</b><br/>"
@@ -115,7 +146,7 @@ def create_official_pdf(client_name: str, client_attn: str, invoice_no: str,
     story.append(Paragraph(f"<b>SUBJECT:</b> {subject}", bold_style))
     story.append(Spacer(1, 8))
 
-    # 4. 施工明细表格
+    # 4. 施工明細表格
     table_data = [[Paragraph("<b>NO.</b>", bold_style),
                    Paragraph("<b>DESCRIPTION OF WORKS COMPLETED</b>", bold_style)]]
     for idx, item in enumerate(items, 1):
@@ -134,12 +165,12 @@ def create_official_pdf(client_name: str, client_attn: str, invoice_no: str,
     story.append(work_table)
     story.append(Spacer(1, 10))
 
-    # 5. Note 行（独立段落，对齐 INV-10051 位置）
+    # 5. Note 行（獨立段落）
     if note_text:
         story.append(Paragraph(f"<b>Note:</b> {note_text}", normal_style))
         story.append(Spacer(1, 6))
 
-    # 6. 价格与折扣区块（标签改为 Loyal Customer Discount）
+    # 6. 價格與折扣區塊
     total_amount = original_price - discount_amount
     calc_data = [
         [Paragraph("Original Price:", normal_style), Paragraph(f"RM {original_price:.2f}", normal_style)],
@@ -156,7 +187,7 @@ def create_official_pdf(client_name: str, client_attn: str, invoice_no: str,
     story.append(calc_table)
     story.append(Spacer(1, 10))
 
-    # 7. 付款指示与条款
+    # 7. 付款指示與條款
     pay_text = (f"<b>PAYMENT INSTRUCTIONS</b><br/>"
                 f"Due: {due_date_str} (Within 7 days)<br/>"
                 f"Method: Bank Transfer / Cash / Cheque<br/>"
@@ -172,20 +203,9 @@ def create_official_pdf(client_name: str, client_attn: str, invoice_no: str,
     story.append(Paragraph(terms_text,
                            ParagraphStyle("Terms", parent=normal_style, fontSize=7,
                                           leading=9, textColor=colors.HexColor("#718096"))))
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 15))
 
-    # 8. 签名区块（保留签名线占位，与 INV-10051 一致）
-    sig_data = [[
-        Paragraph("<b>AUTHORIZED SIGNATURE:</b><br/><b>CIVEXA CONSTRUCTION</b><br/><br/><br/>"
-                  "___________________________", normal_style),
-        Paragraph("<br/><br/><br/><b>Thank You For Your Business!</b>",
-                  ParagraphStyle("Thanks", parent=normal_style, alignment=2))
-    ]]
-    sig_table = Table(sig_data, colWidths=[300, 240])
-    story.append(sig_table)
-    story.append(Spacer(1, 8))
-
-    # 9. 底部页脚三栏（对齐 INV-10051）
+    # 8. 底部頁腳三欄（已移除簽名線，保持乾淨專業）
     footer_text = ("<font size=7 color='#718096'>Thank You For Your Business!  |  "
                    "For any queries regarding this invoice, please contact us.  |  "
                    "CIVEXA CONSTRUCTION  |  CIDB Registered Contractor</font>")
@@ -196,29 +216,29 @@ def create_official_pdf(client_name: str, client_attn: str, invoice_no: str,
     return filename
 
 
-# ================= 多 Agent 总指挥调度系统 =================
+# ================= 多 Agent 總指揮調度系統 =================
 def run_multi_agent_system(user_message: str):
-    system_prompt = f"""你是企业级 AI 总管（Manager Agent），旗下统筹多个专业分身：
-1. 【资深工程估价师 Agent】：精通马来西亚装修市场，严格依据公司规范计算价格与特别优惠。
-2. 【财务单据专员 Agent】：精通 INV-10051 发票格式，负责调用 `create_official_pdf` 工具生成 A4 PDF 发票。
+    system_prompt = f"""你是企業級 AI 總管（Manager Agent）。
 
-以下是公司的核心规范与最新发票范本格式：
-{COMPANY_KNOWLEDGE}
+    【核心安全準則 - 防重複開票】
+    1. 當老闆要求開立新發票（如 INV-10052）時，**必須先調用 `check_invoice_status` 工具**檢查該號碼是否已存在。
+    2. 如果工具返回「⚠️ 警告：已開立」，你必須立刻停止生成 PDF，並回覆老闆：「⚠️ 老闆，該發票已經開立過了，請問是要補發舊的，還是要作廢重開？」
+    3. 只有在工具返回「✅ 確認：尚未開立」時，你才能調用 `create_official_pdf` 生成 PDF。
+    4. 生成 PDF 成功後，**必須立刻調用 `register_invoice` 工具**將此發票寫入登記簿。
 
-【工作准则】
-- 当老板要求开立/更新新发票（例如 INV-10052）时，请自动解析：新顾客名称、联系人、工程主旨、明细内容、Note 备注文案、原价与 Loyal Customer Discount 折扣金额。
-- 必须调用 `create_official_pdf` 工具，items_json 参数请传 JSON 字符串，note_text 请传价格备注文案。
-- 若明细过多可能超过 2 页，请主动精简描述文字，确保不超过 2 页 A4。
-- 普通问候请用专业、简洁的管家语气回复，不要调用工具。
-"""
+    以下是公司規範與發票範本：
+    {COMPANY_KNOWLEDGE}
+    """
 
-    # 新版 google-genai SDK 直接传 Python function 即自动调用并回填结果
+    # 將三個工具一起傳給 AI，SDK 會自動處理調用順序
+    tools = [check_invoice_status, register_invoice, create_official_pdf]
+
     response = client.models.generate_content(
-        model="gemini-3.6-flash",  # 如追求更快/更稳的 function calling，可改 "gemini-2.0-flash"
+        model="gemini-2.5-flash",
         contents=user_message,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
-            tools=[create_official_pdf],
+            tools=tools,
             temperature=0.2,
         ),
     )
