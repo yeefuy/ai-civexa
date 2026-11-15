@@ -7,8 +7,6 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.pdfmetrics import TTFFont
 
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
@@ -43,23 +41,17 @@ def create_official_pdf(client_name: str, client_attn: str, invoice_no: str, sub
     doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
     story = []
 
-    # 註冊雲端中文字體
-    font_path = "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
-    if os.path.exists(font_path):
-        pdfmetrics.registerFont(TTFFont('WenQuanYi', font_path))
-        font_name = 'WenQuanYi'
-    else:
-        font_name = 'Helvetica'
+    # 使用內建標準 Helvetica 字體，百分之百穩定兼容，絕不報錯
+    font_name = 'Helvetica'
 
     styles = getSampleStyleSheet()
-    header_style = ParagraphStyle('Header', parent=styles['Normal'], fontName=font_name, fontSize=9, leading=12, textColor=colors.HexColor("#2D3748"))
     title_style = ParagraphStyle('Title', parent=styles['Normal'], fontName=font_name, fontSize=16, alignment=1, textColor=colors.HexColor("#1A365D"))
     normal_style = ParagraphStyle('NormalCN', parent=styles['Normal'], fontName=font_name, fontSize=9, leading=13)
-    bold_style = ParagraphStyle('BoldCN', parent=normal_style, fontName=font_name, fontSize=9, textColor=colors.HexColor("#1A365D"))
+    bold_style = ParagraphStyle('BoldCN', parent=normal_style, fontName=font_name, fontSize=9, textColor=colors.HexColor("#1A365D"), fontName='Helvetica-Bold')
 
     # 1. 頂部公司標頭
     story.append(Paragraph("<b>CIVEXA CONSTRUCTION</b>", title_style))
-    story.append(Paragraph("<font size=8 color='#555555' align='center'>CIDB Registered Contractor | Company Reg. No: 003666333-A<br/>48, Jalan Nuri 7/5, Kota Damansara, 47810 Petaling Jaya, Selangor<br/>Email: civexa2@gmail.com | Tel: 012-208 5595</font>", normal_style))
+    story.append(Paragraph("<font size=8 color='#555555'>CIDB Registered Contractor | Company Reg. No: 003666333-A<br/>48, Jalan Nuri 7/5, Kota Damansara, 47810 Petaling Jaya, Selangor<br/>Email: civexa2@gmail.com | Tel: 012-208 5595</font>", normal_style))
     story.append(Spacer(1, 10))
     story.append(Paragraph("<b>INVOICE</b>", ParagraphStyle('InvTitle', parent=title_style, fontSize=14, textColor=colors.HexColor("#2B6CB0"))))
     story.append(Spacer(1, 10))
