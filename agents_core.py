@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from google import genai
 from google.genai import types
 from reportlab.lib.pagesizes import A4
@@ -12,29 +12,47 @@ from reportlab.pdfbase.ttfonts import TTFFont
 
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-# ================= 企業知識庫 (可隨時在 GitHub 網頁修改) =================
+# ================= 企業官方資料與最新發票範本規範 =================
 COMPANY_KNOWLEDGE = """
-【企業標準規範】
+【企業官方資訊】
+- 公司名稱：CIVEXA CONSTRUCTION
+-資質與註冊：CIDB Registered Contractor | Company Reg. No: 003666333-A
+- 公司地址：48, Jalan Nuri 7/5, Kota Damansara, 47810 Petaling Jaya, Selangor
+- 聯絡方式：Email: civexa2@gmail.com | Tel: 012-208 5595
+- 收款銀行與賬號：
+  * 銀行名稱：Maybank
+  * 賬戶名稱：CIVEXA CONSTRUCTION
+  * 賬戶號碼：5142-0890-0031
 - 默認貨幣：RM (馬來西亞林吉特)
-- 付款條款：開工前支付 50% 定金，完工驗收後支付 50% 尾款。
-- 標準工料參考單價：
-  1. 拆除舊地磚（含清運）：RM 3.50 / sqft
-  2. 鋪設 60x60cm 拋光地磚（包工包料）：RM 9.50 / sqft
-  3. 實木門安裝（含門框與五金）：RM 350.00 / 套
-  4. 浴室/陽台防水處理：RM 450.00 / 間
-  5. 混凝土牆體高壓注漿補漏：RM 800.00 / 處
+
+【最新發票排版與編號規範 (參考 INV-10051 格式)】
+- 發票編號格式：INV-10052（後續自動遞增，如 INV-10053 等）
+- 單據期限：發票日期起算 7 天內 (Due Date)
+- 價格備註規則：如遇特別優惠，需明確列出 Original Price（原價）、Loyal Customer Discount（忠實顧客特別優惠折扣）、SST (0%)、以及 TOTAL AMOUNT DUE（應付總額）。
+- 頁面限制：嚴格控制版面與行距，確保單張/新 A4 Invoice 絕不超過 2 頁。
 """
 
-# ================= Agent 可自主調用的工具箱 =================
-def create_official_pdf(client_name: str, doc_type: str, items_json: str) -> str:
+def create_official_pdf(client_name: str, client_attn: str, invoice_no: str, subject: str, items_json: str, discount_note: str, original_price: float, discount_amount: float) -> str:
     """
-    工具：生成正式的工程報價單或發票 PDF 文件。
+    工具：完全依照 INV-10051 最新範本生成專業 A4 PDF 發票/報價單。
+    參數:
+      client_name: 顧客公司名稱 (例如: Yanda Enterprise Sdn Bhd)
+      client_attn: 聯繫人 (例如: Mr. Tan Cheng Yong)
+      invoice_no: 發票編號 (例如: INV-10052)
+      subject: 工程主旨 (例如: Repair of Leaking 20mm Copper Water Pipe)
+      items_json: 施工明細 JSON 字串，例如 '[{"desc":"20mm銅水管修復...","subtotal":300}]'
+      discount_note: 價格備註 (例如: Note: Special discounted price for loyal customer...)
+      original_price: 原價數值 (例如: 300.0)
+      discount_amount: 折扣數值 (例如: 120.0)
     """
     items = json.loads(items_json)
-    filename = f"/tmp/{doc_type}_{client_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
+    filename = f"/tmp/{invoice_no}_{client_name.replace(' ', '_')}.pdf"
+    
+    # A4 頁面與邊距設定 (確保不超過 2 頁)
+    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
     story = []
 
+    # 註冊雲端中文字體
     font_path = "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
     if os.path.exists(font_path):
         pdfmetrics.registerFont(TTFFont('WenQuanYi', font_path))
@@ -43,55 +61,110 @@ def create_official_pdf(client_name: str, doc_type: str, items_json: str) -> str
         font_name = 'Helvetica'
 
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('Title', parent=styles['Normal'], fontName=font_name, fontSize=18, alignment=1, textColor=colors.HexColor("#1A365D"))
-    normal_style = ParagraphStyle('NormalCN', parent=styles['Normal'], fontName=font_name, fontSize=10, leading=14)
-    bold_style = ParagraphStyle('BoldCN', parent=normal_style, fontName=font_name, fontSize=10, textColor=colors.HexColor("#1A365D"))
+    header_style = ParagraphStyle('Header', parent=styles['Normal'], fontName=font_name, fontSize=9, leading=12, textColor=colors.HexColor("#2D3748"))
+    bold_header = ParagraphStyle('BoldHeader', parent=header_style, fontName=font_name, fontSize=11, leading=14, textColor=colors.HexColor("#1A365D"), fontName_bold=True)
+    title_style = ParagraphStyle('Title', parent=styles['Normal'], fontName=font_name, fontSize=16, alignment=1, textColor=colors.HexColor("#1A365D"))
+    normal_style = ParagraphStyle('NormalCN', parent=styles['Normal'], fontName=font_name, fontSize=9, leading=13)
+    bold_style = ParagraphStyle('BoldCN', parent=normal_style, fontName=font_name, fontSize=9, textColor=colors.HexColor("#1A365D"))
 
-    title_text = "工程報價單 / QUOTATION" if doc_type.lower() == "quotation" else "正式發票 / INVOICE"
-    story.append(Paragraph(f"<b>{title_text}</b>", title_style))
-    story.append(Spacer(1, 15))
+    # 1. 頂部公司標頭
+    story.append(Paragraph("<b>CIVEXA CONSTRUCTION</b>", title_style))
+    story.append(Paragraph("<font size=8 color='#555555' align='center'>CIDB Registered Contractor | Company Reg. No: 003666333-A<br/>48, Jalan Nuri 7/5, Kota Damansara, 47810 Petaling Jaya, Selangor<br/>Email: civexa2@gmail.com | Tel: 012-208 5595</font>", normal_style))
+    story.append(Spacer(1, 10))
+    story.append(Paragraph("<b>INVOICE</b>", ParagraphStyle('InvTitle', parent=title_style, fontSize=14, textColor=colors.HexColor("#2B6CB0"))))
+    story.append(Spacer(1, 10))
 
+    # 2. 客戶與發票資訊區塊
+    today_str = datetime.now().strftime('%4th %B %Y') # 模擬標準英文日期格式
+    due_str = (datetime.now() + timedelta(days=7)).strftime('%4th %B %Y')
+    
     info_data = [
-        [Paragraph(f"<b>客戶名稱：</b>{client_name}", normal_style), Paragraph(f"<b>日期：</b>{datetime.now().strftime('%Y-%m-%d')}", normal_style)],
-        [Paragraph(f"<b>單據類型：</b>{doc_type}", normal_style), Paragraph(f"<b>結算貨幣：</b>RM (馬幣)", normal_style)]
+        [
+            Paragraph(f"<b>BILL TO:</b><br/><b>{client_name}</b><br/>Attn: {client_attn}", normal_style),
+            Paragraph(f"<b>INVOICE INFORMATION:</b><br/>Invoice Number: <b>{invoice_no}</b><br/>Invoice Date: {datetime.now().strftime('%d %b %Y')}<br/>Due Date: {(datetime.now() + timedelta(days=7)).strftime('%d %b %Y')}<br/>Payment: Bank Transfer / Cash / Cheque", normal_style)
+        ]
     ]
-    story.append(Table(info_data, colWidths=[280, 240]))
-    story.append(Spacer(1, 15))
+    info_table = Table(info_data, colWidths=[270, 270])
+    info_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F7FAFC")),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E0")),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('LEFTPADDING', (0,0), (-1,-1), 8),
+        ('RIGHTPADDING', (0,0), (-1,-1), 8),
+    ]))
+    story.append(info_table)
+    story.append(Spacer(1, 10))
 
+    # 3. 主旨 (SUBJECT)
+    story.append(Paragraph(f"<b>SUBJECT:</b> {subject}", bold_style))
+    story.append(Spacer(1, 8))
+
+    # 4. 施工明細表格
     table_data = [[
-        Paragraph("<b>項目明細與規格</b>", bold_style),
-        Paragraph("<b>數量</b>", bold_style),
-        Paragraph("<b>單位</b>", bold_style),
-        Paragraph("<b>單價(RM)</b>", bold_style),
-        Paragraph("<b>小計(RM)</b>", bold_style)]
-    ]
+        Paragraph("<b>NO.</b>", bold_style),
+        Paragraph("<b>DESCRIPTION OF WORKS COMPLETED</b>", bold_style)
+    ]]
 
-    total_amount = 0.0
-    for item in items:
-        sub = float(item.get("subtotal", 0))
-        total_amount += sub
+    for idx, item in enumerate(items, 1):
+        desc_html = f"<b>{item.get('title', '')}</b><br/>" + "<br/>".join([f"- {line}" for line in item.get('details', [])])
         table_data.append([
-            Paragraph(str(item.get("name", "")), normal_style),
-            Paragraph(str(item.get("qty", "")), normal_style),
-            Paragraph(str(item.get("unit", "")), normal_style),
-            Paragraph(f"{float(item.get('price', 0)):.2f}", normal_style),
-            Paragraph(f"{sub:.2f}", normal_style)
+            Paragraph(str(idx), normal_style),
+            Paragraph(desc_html, normal_style)
         ])
 
-    t = Table(table_data, colWidths=[210, 60, 60, 95, 95])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#EDF2F7")),
-        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E0")),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    work_table = Table(table_data, colWidths=[40, 500])
+    work_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#EDF2F7")),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E0")),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
     ]))
-    story.append(t)
-    story.append(Spacer(1, 15))
+    story.append(work_table)
+    story.append(Spacer(1, 10))
 
-    total_table = Table([["", "", "", Paragraph("<b>總計金額：</b>", bold_style), Paragraph(f"<b>RM {total_amount:.2f}</b>", bold_style)]], colWidths=[210, 60, 60, 95, 95])
-    story.append(total_table)
+    # 5. 價格與折扣備註
+    total_amount = original_price - discount_amount
+    calc_data = [
+        [Paragraph(f"<b>{discount_note}</b>", normal_style), ""],
+        [Paragraph("Original Price:", normal_style), Paragraph(f"RM {original_price:.2f}", normal_style)],
+        [Paragraph("Special Discount:", normal_style), Paragraph(f"- RM {discount_amount:.2f}", normal_style)],
+        [Paragraph("SST (0%):", normal_style), Paragraph("RM 0.00", normal_style)],
+        [Paragraph("<b>TOTAL AMOUNT DUE:</b>", bold_style), Paragraph(f"<b>RM {total_amount:.2f}</b>", bold_style)]
+    ]
+    calc_table = Table(calc_data, colWidths=[380, 160])
+    calc_table.setStyle(TableStyle([
+        ('LINEABOVE', (0,1), (-1,1), 0.5, colors.HexColor("#CBD5E0")),
+        ('LINEBELOW', (0,-1), (-1,-1), 1, colors.HexColor("#1A365D")),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ]))
+    story.append(calc_table)
+    story.append(Spacer(1, 10))
+
+    # 6. 付款指示與條款
+    pay_text = f"""<b>PAYMENT INSTRUCTIONS</b><br/>
+Due: {(datetime.now() + timedelta(days=7)).strftime('%d %b %Y')} (Within 7 days)<br/>
+Method: Bank Transfer / Cash / Cheque<br/>
+Bank: Maybank | Account Name: CIVEXA CONSTRUCTION<br/>
+Account No: 5142-0890-0031 | Reference: {invoice_no}<br/>
+State reference clearly to avoid processing delays.
+"""
+    terms_text = "<b>TERMS & CONDITIONS:</b> Payment due within 7 days from invoice date - Late payment may result in work suspension & additional charges - All works completed as per agreed specifications - Special loyal customer rate applied - Quality workmanship guaranteed"
+    
+    story.append(Paragraph(pay_text, normal_style))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(terms_text, ParagraphStyle('Terms', parent=normal_style, fontSize=7, leading=9, textColor=colors.HexColor("#718096"))))
+    story.append(Spacer(1, 10))
+
+    # 7. 簽名與結尾
+    sig_data = [[
+        Paragraph("<b>AUTHORIZED SIGNATURE:</b><br/><b>CIVEXA CONSTRUCTION</b><br/><br/><br/>___________________________", normal_style),
+        Paragraph("<br/><br/><br/><b>Thank You For Your Business!</b>", ParagraphStyle('Thanks', parent=normal_style, alignment=2))
+    ]]
+    sig_table = Table(sig_data, colWidths=[300, 240])
+    story.append(sig_table)
 
     doc.build(story)
     return filename
@@ -99,16 +172,15 @@ def create_official_pdf(client_name: str, doc_type: str, items_json: str) -> str
 # ================= 多 Agent 總指揮調度系統 =================
 def run_multi_agent_system(user_message: str):
     system_prompt = f"""你是企業級 AI 總管（Manager Agent），旗下統籌多個專業分身：
-1. 【資深工程估價師 Agent】：精通馬來西亞裝修市場，嚴格依據知識庫計算成本與報價。
-2. 【財務單據專員 Agent】：當用戶需要正式單據時，負責調用 `create_official_pdf` 工具生成 PDF。
-3. 【全能商務助理 Agent】：負責中英文商務溝通與日常決策。
+1. 【資深工程估價師 Agent】：精通馬來西亞裝修市場，嚴格依據公司規範計算價格與特別優惠。
+2. 【財務單據專員 Agent】：精通 INV-10051 發票格式，負責調用 `create_official_pdf` 工具生成精準符合排版規範的 A4 PDF 發票（嚴格控制在 2 頁內）。
 
-以下是公司的核心知識庫：
+以下是公司的核心規範與最新發票範本格式：
 {COMPANY_KNOWLEDGE}
 
 【工作準則】
-- 自主判斷用戶意圖：如果只是諮詢、算草稿、寫郵件，直接給出專業清晰的回覆。
-- 如果用戶明確要求「開報價單」、「生成發票」或「出 PDF」，請先算好精準明細，然後**主動調用 `create_official_pdf` 工具**生成檔案。
+- 當老闆要求開立新發票（例如 INV-10052）時，請自動解析老闆提供的**新顧客名稱、聯繫人、工程主旨、明細內容、原價與特別優惠折扣金額**。
+- **必須主動調用 `create_official_pdf` 工具**生成正式 PDF 發票，並在 Telegram 回覆中確認發票編號與總金額。
 """
 
     response = client.models.generate_content(
@@ -117,7 +189,7 @@ def run_multi_agent_system(user_message: str):
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             tools=[create_official_pdf],
-            temperature=0.3,
+            temperature=0.2,
         )
     )
 
