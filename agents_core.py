@@ -62,7 +62,7 @@ def create_official_pdf(client_name: str, client_attn: str, invoice_no: str, sub
 
     styles = getSampleStyleSheet()
     header_style = ParagraphStyle('Header', parent=styles['Normal'], fontName=font_name, fontSize=9, leading=12, textColor=colors.HexColor("#2D3748"))
-    bold_header = ParagraphStyle('BoldHeader', parent=header_style, fontName=font_name, fontSize=11, leading=14, textColor=colors.HexColor("#1A365D"), fontName_bold=True)
+    bold_header = ParagraphStyle('BoldHeader', parent=header_style, fontName=font_name, fontSize=11, leading=14, textColor=colors.HexColor("#1A365D"))
     title_style = ParagraphStyle('Title', parent=styles['Normal'], fontName=font_name, fontSize=16, alignment=1, textColor=colors.HexColor("#1A365D"))
     normal_style = ParagraphStyle('NormalCN', parent=styles['Normal'], fontName=font_name, fontSize=9, leading=13)
     bold_style = ParagraphStyle('BoldCN', parent=normal_style, fontName=font_name, fontSize=9, textColor=colors.HexColor("#1A365D"))
