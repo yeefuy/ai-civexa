@@ -2,4 +2,4 @@ google-genai
 reportlab
 fastapi
 uvicorn
-requests
+python-telegram-bot
