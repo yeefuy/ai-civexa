@@ -8,7 +8,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFFont
+from reportlab.pdfbase.pdfmetrics import TTFFont
 
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
@@ -16,7 +16,7 @@ client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 COMPANY_KNOWLEDGE = """
 【企業官方資訊】
 - 公司名稱：CIVEXA CONSTRUCTION
--資質與註冊：CIDB Registered Contractor | Company Reg. No: 003666333-A
+- 資質與註冊：CIDB Registered Contractor | Company Reg. No: 003666333-A
 - 公司地址：48, Jalan Nuri 7/5, Kota Damansara, 47810 Petaling Jaya, Selangor
 - 聯絡方式：Email: civexa2@gmail.com | Tel: 012-208 5595
 - 收款銀行與賬號：
@@ -35,15 +35,6 @@ COMPANY_KNOWLEDGE = """
 def create_official_pdf(client_name: str, client_attn: str, invoice_no: str, subject: str, items_json: str, discount_note: str, original_price: float, discount_amount: float) -> str:
     """
     工具：完全依照 INV-10051 最新範本生成專業 A4 PDF 發票/報價單。
-    參數:
-      client_name: 顧客公司名稱 (例如: Yanda Enterprise Sdn Bhd)
-      client_attn: 聯繫人 (例如: Mr. Tan Cheng Yong)
-      invoice_no: 發票編號 (例如: INV-10052)
-      subject: 工程主旨 (例如: Repair of Leaking 20mm Copper Water Pipe)
-      items_json: 施工明細 JSON 字串，例如 '[{"desc":"20mm銅水管修復...","subtotal":300}]'
-      discount_note: 價格備註 (例如: Note: Special discounted price for loyal customer...)
-      original_price: 原價數值 (例如: 300.0)
-      discount_amount: 折扣數值 (例如: 120.0)
     """
     items = json.loads(items_json)
     filename = f"/tmp/{invoice_no}_{client_name.replace(' ', '_')}.pdf"
@@ -62,7 +53,6 @@ def create_official_pdf(client_name: str, client_attn: str, invoice_no: str, sub
 
     styles = getSampleStyleSheet()
     header_style = ParagraphStyle('Header', parent=styles['Normal'], fontName=font_name, fontSize=9, leading=12, textColor=colors.HexColor("#2D3748"))
-    bold_header = ParagraphStyle('BoldHeader', parent=header_style, fontName=font_name, fontSize=11, leading=14, textColor=colors.HexColor("#1A365D"))
     title_style = ParagraphStyle('Title', parent=styles['Normal'], fontName=font_name, fontSize=16, alignment=1, textColor=colors.HexColor("#1A365D"))
     normal_style = ParagraphStyle('NormalCN', parent=styles['Normal'], fontName=font_name, fontSize=9, leading=13)
     bold_style = ParagraphStyle('BoldCN', parent=normal_style, fontName=font_name, fontSize=9, textColor=colors.HexColor("#1A365D"))
@@ -75,9 +65,6 @@ def create_official_pdf(client_name: str, client_attn: str, invoice_no: str, sub
     story.append(Spacer(1, 10))
 
     # 2. 客戶與發票資訊區塊
-    today_str = datetime.now().strftime('%4th %B %Y') # 模擬標準英文日期格式
-    due_str = (datetime.now() + timedelta(days=7)).strftime('%4th %B %Y')
-    
     info_data = [
         [
             Paragraph(f"<b>BILL TO:</b><br/><b>{client_name}</b><br/>Attn: {client_attn}", normal_style),
