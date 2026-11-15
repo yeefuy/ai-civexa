@@ -234,7 +234,7 @@ def run_multi_agent_system(user_message: str):
     tools = [check_invoice_status, register_invoice, create_official_pdf]
 
     response = client.models.generate_content(
-        model="gemini-3.6-flash",
+        model="gemini-2.0-flash",
         contents=user_message,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
