@@ -172,7 +172,7 @@ def run_multi_agent_system(user_message: str):
 
     # 新版 google-genai SDK 支援直接傳入 Python function，會自動處理調用與結果回填
     response = client.models.generate_content(
-        model="gemini-2.0-flash", # 建議使用 2.0-flash，速度更快且 function calling 更穩定
+        model="gemini-3.6-flash", # 建議使用 2.0-flash，速度更快且 function calling 更穩定
         contents=user_message,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
