@@ -3,5 +3,5 @@ uvicorn
 python-telegram-bot==20.7
 google-genai
 pydantic
-reportlab
+reportlab==4.0.0
 requests
