@@ -8,7 +8,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.pdfmetrics import TTFFont
+from reportlab.pdfbase.ttfonts import TTFFont
 
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
