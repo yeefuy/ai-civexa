@@ -252,7 +252,7 @@ def run_multi_agent_system(user_message: str):
     )
 
     # 【新增】自动重试与模型降级机制
-    models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash"]
+    models_to_try = ["gemini-3.6-flash", "gemini-1.5-flash"]
     response = None
     
     for model_name in models_to_try:
