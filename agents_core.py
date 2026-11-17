@@ -248,7 +248,7 @@ def run_multi_agent_system(user_message: str):
     tools = [check_doc_status, register_doc, create_official_pdf]
     
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-3.6-flash",
         contents=user_message,
         config=types.GenerateContentConfig(system_instruction=system_prompt, tools=tools, temperature=0.2),
     )
