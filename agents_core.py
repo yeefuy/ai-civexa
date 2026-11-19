@@ -2,8 +2,8 @@ import os
 import json
 import time
 import re
-import mysql.connector
-from mysql.connector import Error
+import psycopg2
+import psycopg2.extras
 from datetime import datetime, timedelta
 from groq import Groq
 from reportlab.lib.pagesizes import A4
@@ -18,18 +18,24 @@ client = Groq(
     api_key=os.environ.get("GROQ_API_KEY")
 )
 
-# ================= 数据库配置 =================
+# ================= Supabase (PostgreSQL) 数据库配置 =================
+# 安全说明：密码绝不硬编码，只从环境变量读取。
+# 使用 psycopg2 参数化字典连接，密码里的特殊字符（如 #）无需 URL 转义。
 DB_CONFIG = {
-    'host': os.environ.get("DB_HOST", "localhost"),
-    'user': os.environ.get("DB_USER", "webcre6_你的用户名"),  # 请替换！
-    'password': os.environ.get("DB_PASSWORD", "你的密码"),      # 请替换！
-    'database': os.environ.get("DB_NAME", "webcre6_Civexa_bot") # 请替换！
+    'host': os.environ.get("DB_HOST", "db.vnpalwldlobrdmyyjrxf.supabase.co"),
+    'port': int(os.environ.get("DB_PORT", 5432)),
+    'database': os.environ.get("DB_NAME", "postgres"),
+    'user': os.environ.get("DB_USER", "postgres"),
+    'password': os.environ.get("DB_PASSWORD", "")  # 留空，强制从环境变量读
 }
 
 def get_db_conn():
+    if not DB_CONFIG['password']:
+        print("Database connection error: DB_PASSWORD 环境变量未设置")
+        return None
     try:
-        return mysql.connector.connect(**DB_CONFIG)
-    except Error as e:
+        return psycopg2.connect(**DB_CONFIG)
+    except Exception as e:
         print(f"Database connection error: {e}")
         return None
 
@@ -68,21 +74,21 @@ def _format_date_ordinal(d: datetime) -> str:
         suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
     return f"{day}{suffix} {d.strftime('%B')} {d.year}"
 
-# ================= 数据库工具函数 =================
+# ================= 数据库工具函数 (PostgreSQL 版) =================
 def check_doc_status(doc_no: str) -> str:
     conn = get_db_conn()
     if not conn: return "⚠️ Database connection failed."
     try:
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cursor.execute("SELECT * FROM invoice_ledger WHERE doc_no = %s", (doc_no,))
         result = cursor.fetchone()
         if result:
             return f"⚠️ Warning: Document {doc_no} ({result['doc_type']}) was already created on {result['created_at']} for {result['client_name']}, amount RM {result['total_amount']}. Do not create duplicate."
         return f"✅ Confirmed: Document {doc_no} is not created yet, proceed."
-    except Error as e:
+    except Exception as e:
         return f"⚠️ Query failed: {e}"
     finally:
-        if conn.is_connected(): conn.close()
+        if conn: conn.close()
 
 def register_doc(doc_no: str, doc_type: str, client_name: str, total_amount: float) -> str:
     conn = get_db_conn()
@@ -96,10 +102,10 @@ def register_doc(doc_no: str, doc_type: str, client_name: str, total_amount: flo
         )
         conn.commit()
         return f"✅ Registered {doc_type} {doc_no} (Client: {client_name}, Amount: RM {total_amount}) to ledger."
-    except Error as e:
+    except Exception as e:
         return f"⚠️ Registration failed: {e}"
     finally:
-        if conn.is_connected(): conn.close()
+        if conn: conn.close()
 
 # ================= PDF 生成工具 =================
 def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
