@@ -8,7 +8,7 @@ from agents_core import run_multi_agent_system
 
 # 从环境变量读取配置
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-OWNER_CHAT_ID = os.environ.get("OWNER_CHAT_ID", "") # 可选：填你的ID则只响应你
+OWNER_CHAT_ID = os.environ.get("OWNER_CHAT_ID", "")
 
 async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -17,12 +17,12 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
     user_text = update.message.text.strip()
     chat_id = update.message.chat_id
 
-    # 1. 白名单检查 (可选)
+    # 白名单检查 (可选)
     if OWNER_CHAT_ID and str(chat_id) != str(OWNER_CHAT_ID):
         await update.message.reply_text("⛔ 此為 CIVEXA 內部 AI 管家，無權限用戶請聯繫管理員。")
         return
 
-    # 2. 强制模式识别 (核心逻辑)
+    # 强制模式识别
     force_mode = None
     actual_message = user_text
 
@@ -39,10 +39,10 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("请输入具体内容，例如：/inv 给 Yanda 开 INV-10052...")
         return
 
-    # 3. 显示正在输入
+    # 显示正在输入
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-    # 4. 调用 AI 核心逻辑
+    # 调用 AI 核心逻辑
     try:
         reply_text, pdf_path = await asyncio.to_thread(
             run_multi_agent_system, 
@@ -51,13 +51,14 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
         )
         
         # 发送文字回复
-        await update.message.reply_text(reply_text)
+        if reply_text:
+            await update.message.reply_text(reply_text)
 
-        # 5. 发送 PDF 附件
+        # 发送 PDF 附件
         if pdf_path and os.path.exists(pdf_path):
             with open(pdf_path, "rb") as pdf_file:
                 await context.bot.send_document(chat_id=chat_id, document=pdf_file)
-            os.remove(pdf_path) # 清理临时文件
+            os.remove(pdf_path)
             
     except Exception as e:
         await update.message.reply_text(f"⚠️ 系統處理異常：{str(e)}")
@@ -66,9 +67,10 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
 async def lifespan(app: FastAPI):
     # 启动 Telegram Bot (Polling 模式)
     tg_app = Application.builder().token(TELEGRAM_TOKEN).build()
-    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_telegram_message))
-    # 也处理以 /inv 或 /qt 开头的消息 (虽然 filters.TEXT 通常包含，但确保万无一失)
-    tg_app.add_handler(MessageHandler(filters.Regex(r'^/(inv|qt)\s*.*'), handle_telegram_message))
+    
+    # 【关键修复】只用一个 handler 处理所有文本消息（包括 /inv 和 /qt 开头的）
+    # 不再用 filters.COMMAND 过滤，让 handle_telegram_message 自己判断
+    tg_app.add_handler(MessageHandler(filters.TEXT, handle_telegram_message))
     
     await tg_app.initialize()
     await tg_app.start()
