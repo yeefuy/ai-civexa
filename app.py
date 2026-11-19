@@ -38,8 +38,8 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
         actual_message = user_text[4:].strip()
         await context.bot.send_message(chat_id, "📝 进入【手动登记模式】，只存号码不生成 PDF。")
     elif user_text.lower().startswith('/sample'):
-        force_action = "SAMPLE"  # <--- 新增：样本模式
-        actual_message = "Generate a sample invoice for layout checking."
+        force_action = "SAMPLE"  # <--- 关键：样本模式
+        actual_message = "Generate sample." # 随便写，AI 会忽略，直接用虚拟数据
         await context.bot.send_message(chat_id, "🎨 正在生成排版样本（不查重、不存库）...")
 
     if not actual_message and force_action != "SAMPLE":
