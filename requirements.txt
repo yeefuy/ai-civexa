@@ -1,4 +1,4 @@
-openai
+groq
 reportlab
 fastapi
 uvicorn
