@@ -5,7 +5,7 @@ import re
 import mysql.connector
 from mysql.connector import Error
 from datetime import datetime, timedelta
-from groq import Groq  # <--- 改用 Groq 官方库
+from groq import Groq
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -14,7 +14,6 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 # ================= Groq 客户端初始化 =================
-# 确保 Render 环境变量里有 GROQ_API_KEY
 client = Groq(
     api_key=os.environ.get("GROQ_API_KEY")
 )
@@ -262,7 +261,7 @@ AVAILABLE_FUNCTIONS = {
     "create_official_pdf": create_official_pdf,
 }
 
-# ================= 多 Agent 总指挥 (带防死循环) =================
+# ================= 多 Agent 总指挥 (带防死循环 + PDF生成后立即返回) =================
 def run_multi_agent_system(user_message: str, force_mode: str = None):
     mode_instruction = ""
     if force_mode:
@@ -300,7 +299,6 @@ def run_multi_agent_system(user_message: str, force_mode: str = None):
     while _iter < max_iter:
         _iter += 1
         try:
-            # 使用您截图里成功的模型名
             response = client.chat.completions.create(
                 model="openai/gpt-oss-120b", 
                 messages=messages,
@@ -329,8 +327,10 @@ def run_multi_agent_system(user_message: str, force_mode: str = None):
             
             function_response = AVAILABLE_FUNCTIONS[function_name](**function_args)
             
+            # 【关键修复】PDF 生成成功后立即返回，不再继续循环
             if function_name == "create_official_pdf" and isinstance(function_response, str) and function_response.startswith("/tmp/"):
                 generated_pdf_path = function_response
+                return message.content, generated_pdf_path
 
             messages.append({
                 "tool_call_id": tool_call.id,
