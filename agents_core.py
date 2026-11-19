@@ -112,13 +112,12 @@ def register_doc(doc_no: str, doc_type: str, client_name: str, total_amount: flo
     finally:
         if conn: conn.close()
 
-# ================= PDF 生成工具 (最终排版版) =================
+# ================= PDF 生成工具 =================
 def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
                         subject: str, items_json: str, note_text: str,
                         original_price: float, discount_amount: float,
                         doc_type: str = "INVOICE") -> str:
     
-    # 中文检测
     _check_text = (subject or "") + (note_text or "") + str(items_json)
     if re.search(r'[\u4e00-\u9fff]', _check_text):
         return "⚠️ CHINESE DETECTED: Abort. Translate to English first."
@@ -135,19 +134,11 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     story = []
     styles = getSampleStyleSheet()
     
-    # --- 样式定义 (统一发票和估价单) ---
-    # 1. 公司名：大字号，大间距
     title_style = ParagraphStyle("Title", parent=styles["Normal"], fontName=BOLD_FONT, fontSize=24, alignment=1, textColor=colors.HexColor("#1A365D"), spaceAfter=12)
-    # 2. 地址/注册号：小字号，浅灰色
     subtitle_style = ParagraphStyle("Subtitle", parent=styles["Normal"], fontName=REG_FONT, fontSize=7, alignment=1, textColor=colors.HexColor("#666666"), spaceAfter=4, leading=10)
-    # 3. 单据标题
     doc_title_style = ParagraphStyle("DocTitle", parent=title_style, fontSize=18, alignment=1, textColor=colors.HexColor("#2B6CB0"), spaceAfter=15)
-    
-    # 4. 正文
     normal_style = ParagraphStyle("Normal", parent=styles["Normal"], fontName=REG_FONT, fontSize=9, leading=14)
-    # 5. 右侧信息专用：右对齐
     right_info_style = ParagraphStyle("RightInfo", parent=normal_style, alignment=2) 
-    
     header_style = ParagraphStyle("Header", parent=styles["Normal"], fontName=BOLD_FONT, fontSize=10, textColor=colors.HexColor("#1A365D"), spaceAfter=6)
     bold_style = ParagraphStyle("Bold", parent=normal_style, fontName=BOLD_FONT)
     right_style = ParagraphStyle("Right", parent=normal_style, alignment=2)
@@ -161,25 +152,20 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     is_invoice = (doc_type.upper() == "INVOICE")
     doc_title = "INVOICE" if is_invoice else "QUOTATION"
 
-    # 1. 页眉 (Header) - 间距拉开，字体比例正确
     story.append(Paragraph("<b>CIVEXA CONSTRUCTION</b>", title_style))
     story.append(Paragraph("(003666333-A) | CIDB-Registered Contractor", subtitle_style))
     story.append(Paragraph("48, Jalan Nuri 7/5, Kota Damansara, 47810 Petaling Jaya, Selangor Darul Ehsan.", subtitle_style))
     story.append(Paragraph("Tel: 012-208 5595 | Email: civexa2@gmail.com", subtitle_style))
     story.append(Spacer(1, 20)) 
     
-    # 2. 单据标题
     story.append(Paragraph(f"<b>{doc_title}</b>", doc_title_style))
 
-    # 3. 单据信息区 (Meta Info) - 左右分栏，右侧靠右对齐
     meta_left = f"<b>BILL TO:</b><br/><b>{client_name}</b><br/>Attn: {client_attn}"
-    
     if is_invoice:
         meta_right = f"<b>INVOICE INFORMATION:</b><br/>Invoice Number: <b>{doc_no}</b><br/>Invoice Date: {inv_str}<br/>Due Date: {due_str}<br/>Payment: Bank Transfer / Cash / Cheque"
     else:
         meta_right = f"<b>QUOTATION INFORMATION:</b><br/>Quotation Number: <b>{doc_no}</b><br/>Quotation Date: {inv_str}<br/>Valid Until: {due_str}<br/>Payment: Bank Transfer / Cash / Cheque"
 
-    # 关键：右侧列使用 right_info_style (右对齐)
     meta_data = [[Paragraph(meta_left, normal_style), Paragraph(meta_right, right_info_style)]]
     mt = Table(meta_data, colWidths=[250, 250])
     mt.setStyle(TableStyle([
@@ -194,11 +180,9 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     story.append(mt)
     story.append(Spacer(1, 20))
 
-    # 4. 工程范围 (Scope)
     story.append(Paragraph(f"<b>SUBJECT:</b> {subject}", bold_style))
     story.append(Spacer(1, 15))
 
-    # 5. 表格 (Table)
     if is_invoice:
         rows = [[
             Paragraph("<b>NO.</b>", ParagraphStyle("TH", parent=normal_style, fontName=BOLD_FONT, textColor=colors.white)),
@@ -244,12 +228,10 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     story.append(wt)
     story.append(Spacer(1, 15))
 
-    # 6. 备注 (Note)
     if note_text:
         story.append(Paragraph(f"<i>Note: {note_text}</i>", ParagraphStyle("Note", parent=normal_style, fontSize=8, textColor=colors.HexColor("#555555"))))
         story.append(Spacer(1, 15))
 
-    # 7. 价格汇总 (Totals)
     total = original_price - discount_amount
     if original_price > 0:
         calc_data = [
@@ -272,17 +254,14 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
         story.append(ct)
         story.append(Spacer(1, 20))
 
-    # 8. 付款说明 & 条款 (无签名区)
     if is_invoice:
         story.append(Paragraph("<b>PAYMENT INSTRUCTIONS</b>", header_style))
         story.append(Paragraph(f"Due: {due_str} (Within 7 days)<br/>Method: Bank Transfer / Cash / Cheque<br/>Bank: Maybank | Account Name: CIVEXA CONSTRUCTION<br/>Account No: 5142-0890-0031 | Reference: {doc_no}", normal_style))
         story.append(Paragraph("<font size=8 color='#718096'>State reference clearly to avoid processing delays.</font>", normal_style))
         story.append(Spacer(1, 15))
-        
         terms_text = "Payment due within 7 days from invoice date - Late payment may result in work suspension & additional charges - All works completed as per agreed specifications - Special loyal customer rate applied - Quality workmanship guaranteed"
         story.append(Paragraph(f"<b>TERMS & CONDITIONS:</b> {terms_text}", ParagraphStyle("Terms", parent=normal_style, fontSize=7, leading=9, textColor=colors.HexColor("#718096"))))
         story.append(Spacer(1, 20))
-        
     else:
         story.append(Paragraph("<b>TERMS & CONDITIONS</b>", header_style))
         terms_list = [
@@ -295,7 +274,6 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
             story.append(Paragraph(f"• {term}", ParagraphStyle("TermItem", parent=normal_style, fontSize=8, leftIndent=10, spaceAfter=6)))
         story.append(Spacer(1, 20))
 
-    # 9. 页脚
     story.append(Spacer(1, 20))
     story.append(Paragraph("<font size=7 color='#A0AEC0'>Thank You For Your Business! | CIVEXA CONSTRUCTION | CIDB Registered Contractor</font>", ParagraphStyle("Footer", parent=normal_style, alignment=1)))
 
@@ -325,28 +303,30 @@ def run_multi_agent_system(user_message: str, force_mode: str = None, force_acti
     
     action_instruction = ""
     
-    # 处理登记模式
     if force_action == "REGISTER":
         action_instruction = """
         【最高指令：仅登记/补录】
-        用户正在手动登记一个已经在别处（如 Claude）做好的单据。
-        你的任务：
-        1. 从用户输入中提取：单据号 (doc_no)、客户名 (client_name)、总金额 (total_amount)。
-        2. 根据单据号前缀自动判断 doc_type (INV开头=INVOICE, QT开头=QUOTATION)。
-        3. **只调用 `register_doc`**。
-        4. **严禁调用 `create_official_pdf`**。
-        5. 回复用户：“✅ 已登记 [号码] 到系统，该号码已被锁定，下次自动生成将跳过。”
+        1. 提取：doc_no, client_name, total_amount。
+        2. 自动判断 doc_type (INV=INVOICE, QT=QUOTATION)。
+        3. **只调用 `register_doc`**。严禁调用 `create_official_pdf`。
         """
-    # 处理样本模式 (新增)
     elif force_action == "SAMPLE":
         action_instruction = """
-        【最高指令：生成排版样本】
-        用户需要检查 PDF 排版。
-        1. 使用虚拟数据：客户名 'Sample Client Sdn Bhd'，联系人 'Mr. Sample'，号码 'SAMPLE-INV-001'，原价 RM 1000，折扣 RM 100。
-        2. 主旨写 'Sample Layout Check - Repair Works'。
-        3. **严禁调用 `check_doc_status` 和 `register_doc`** (不查重、不存库)。
-        4. **直接调用 `create_official_pdf`** 生成文件。
-        5. 回复用户："🎨 这是排版样本，未存入数据库。"
+        【最高指令：生成排版样本 - 绝对禁止提问】
+        用户只想看排版效果。
+        1. **严禁提问**，严禁要求用户提供信息。
+        2. **严禁调用 `check_doc_status` 和 `register_doc`**。
+        3. **必须立即调用 `create_official_pdf`**，使用以下虚拟数据：
+           - client_name: "Sample Client Sdn Bhd"
+           - client_attn: "Mr. Sample"
+           - doc_no: "SAMPLE-001"
+           - doc_type: "INVOICE" (或者 force_mode 指定的类型)
+           - subject: "Sample Layout Check - Repair Works"
+           - items_json: '[{"title": "Sample Work Item 1", "details": ["Detail A", "Detail B"]}, {"title": "Sample Work Item 2", "details": ["Detail C"]}]'
+           - original_price: 1000.00
+           - discount_amount: 100.00
+           - note_text: "This is a layout sample."
+        4. 回复："🎨 样本已生成。"
         """
 
     system_prompt = f"""你是企业级 AI 总管。
@@ -354,17 +334,12 @@ def run_multi_agent_system(user_message: str, force_mode: str = None, force_acti
 {action_instruction}
 
 【最高强制规则 - 纯英文输出】
-生成 PDF 时，所有内容 (subject, items, note) 必须是 100% 纯英文。
-翻译范例：
-  「拆除旧瓷砖」→「Removal of existing damaged tiles」
-  「安装新瓷砖」→「Installation of new tiles」
+生成 PDF 时，所有内容必须是 100% 纯英文。
 
 【工作流】
-1. 确定单据号：用户指定则用指定的；未指定则调用 `get_next_doc_no`。
-2. 调用 `check_doc_status` 防重。
-3. 如果是生成任务：调用 `create_official_pdf` (全英文)，成功后调用 `register_doc`。
-4. 如果是登记任务 (force_action=REGISTER)：直接调用 `register_doc`。
-5. 如果是样本任务 (force_action=SAMPLE)：直接调用 `create_official_pdf`。
+1. 如果是 SAMPLE 模式：直接调用 `create_official_pdf` (用虚拟数据)。
+2. 如果是 REGISTER 模式：直接调用 `register_doc`。
+3. 如果是正常模式：查号 -> 查重 -> 生成 PDF -> 登记。
 
 公司规范：
 {COMPANY_KNOWLEDGE}
