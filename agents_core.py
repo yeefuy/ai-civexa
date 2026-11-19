@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import re
 import mysql.connector
 from mysql.connector import Error
 from datetime import datetime, timedelta
@@ -12,11 +13,13 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-# ================= Groq 客户端初始化 =================
-# 使用 OpenAI 库连接 Groq API
+# ================= 客户端初始化 =================
+# 注意：如果您使用的是 OpenRouter 或其他兼容 OpenAI 的平台，请修改 base_url
+# 如果您使用的是 Groq，base_url 应为 "https://api.groq.com/openai/v1"
+# 如果您使用的是 DeepSeek，base_url 应为 "https://api.deepseek.com"
 client = OpenAI(
-    api_key=os.environ.get("GROQ_API_KEY"),
-    base_url="https://api.groq.com/openai/v1"
+    api_key=os.environ.get("API_KEY"), # 请确保环境变量名与您的平台对应 (如 GROQ_API_KEY, OPENROUTER_API_KEY 等)
+    base_url=os.environ.get("API_BASE_URL", "https://api.groq.com/openai/v1") 
 )
 
 # ================= 数据库配置 =================
@@ -72,22 +75,22 @@ def _format_date_ordinal(d: datetime) -> str:
 # ================= 数据库工具函数 =================
 def check_doc_status(doc_no: str) -> str:
     conn = get_db_conn()
-    if not conn: return "⚠️ 数据库连接失败。"
+    if not conn: return "⚠️ Database connection failed."
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM invoice_ledger WHERE doc_no = %s", (doc_no,))
         result = cursor.fetchone()
         if result:
-            return f"⚠️ 警告：单据 {doc_no} ({result['doc_type']}) 已于 {result['created_at']} 开立给 {result['client_name']}，金额 RM {result['total_amount']}。请勿重复开立。"
-        return f"✅ 确认：单据 {doc_no} 尚未开立，可以继续生成。"
+            return f"⚠️ Warning: Document {doc_no} ({result['doc_type']}) was already created on {result['created_at']} for {result['client_name']}, amount RM {result['total_amount']}. Do not create duplicate."
+        return f"✅ Confirmed: Document {doc_no} is not created yet, proceed."
     except Error as e:
-        return f"⚠️ 查询失败：{e}"
+        return f"⚠️ Query failed: {e}"
     finally:
         if conn.is_connected(): conn.close()
 
 def register_doc(doc_no: str, doc_type: str, client_name: str, total_amount: float) -> str:
     conn = get_db_conn()
-    if not conn: return "⚠️ 数据库连接失败。"
+    if not conn: return "⚠️ Database connection failed."
     try:
         cursor = conn.cursor()
         cursor.execute(
@@ -96,9 +99,9 @@ def register_doc(doc_no: str, doc_type: str, client_name: str, total_amount: flo
             (doc_no, doc_type, client_name, total_amount)
         )
         conn.commit()
-        return f"✅ 已登记 {doc_type} {doc_no}（客户: {client_name}，金额: RM {total_amount}）到系统帐册。"
+        return f"✅ Registered {doc_type} {doc_no} (Client: {client_name}, Amount: RM {total_amount}) to ledger."
     except Error as e:
-        return f"⚠️ 登记失败：{e}"
+        return f"⚠️ Registration failed: {e}"
     finally:
         if conn.is_connected(): conn.close()
 
@@ -107,6 +110,13 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
                         subject: str, items_json: str, note_text: str,
                         original_price: float, discount_amount: float,
                         doc_type: str = "INVOICE") -> str:
+    """生成 A4 PDF（支持 INVOICE 和 QUOTATION）"""
+    
+    # 【中文检测兜底】强制要求全英文
+    _check_text = (subject or "") + (note_text or "") + str(items_json)
+    if re.search(r'[\u4e00-\u9fff]', _check_text):
+        return "⚠️ CHINESE DETECTED: PDF generation aborted. You MUST translate subject, items_json, and note_text into professional English before calling this tool again."
+
     try:
         items = json.loads(items_json) if isinstance(items_json, str) else items_json
         if not isinstance(items, list): items = [items]
@@ -194,16 +204,16 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     doc.build(story)
     return filename
 
-# ================= OpenAI/Groq 格式的 Tools 定义 =================
+# ================= OpenAI 格式的 Tools 定义 =================
 tools_schema = [
     {
         "type": "function",
         "function": {
             "name": "check_doc_status",
-            "description": "检查单据是否已开立（防重）",
+            "description": "Check if document is already created (anti-duplicate)",
             "parameters": {
                 "type": "object",
-                "properties": {"doc_no": {"type": "string", "description": "单据编号，如 INV-10052"}},
+                "properties": {"doc_no": {"type": "string", "description": "Document number, e.g. INV-10052"}},
                 "required": ["doc_no"]
             }
         }
@@ -212,7 +222,7 @@ tools_schema = [
         "type": "function",
         "function": {
             "name": "register_doc",
-            "description": "登记新单据到数据库",
+            "description": "Register new document to database",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -229,16 +239,16 @@ tools_schema = [
         "type": "function",
         "function": {
             "name": "create_official_pdf",
-            "description": "生成 A4 PDF（支持 INVOICE 和 QUOTATION）",
+            "description": "Generate A4 PDF (Support INVOICE and QUOTATION). ALL CONTENT MUST BE IN ENGLISH.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "client_name": {"type": "string"},
                     "client_attn": {"type": "string"},
                     "doc_no": {"type": "string"},
-                    "subject": {"type": "string"},
-                    "items_json": {"type": "string", "description": "JSON string array of items"},
-                    "note_text": {"type": "string"},
+                    "subject": {"type": "string", "description": "Must be English"},
+                    "items_json": {"type": "string", "description": "JSON string array of items. Title and details must be English."},
+                    "note_text": {"type": "string", "description": "Must be English"},
                     "original_price": {"type": "number"},
                     "discount_amount": {"type": "number"},
                     "doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]}
@@ -249,14 +259,13 @@ tools_schema = [
     }
 ]
 
-# 本地函数映射表
 AVAILABLE_FUNCTIONS = {
     "check_doc_status": check_doc_status,
     "register_doc": register_doc,
     "create_official_pdf": create_official_pdf,
 }
 
-# ================= 多 Agent 总指挥 (Groq 循环调用版) =================
+# ================= 多 Agent 总指挥 (带防死循环) =================
 def run_multi_agent_system(user_message: str, force_mode: str = None):
     mode_instruction = ""
     if force_mode:
@@ -265,10 +274,18 @@ def run_multi_agent_system(user_message: str, force_mode: str = None):
     system_prompt = f"""你是企业级 AI 总管。
 {mode_instruction}
 
+【最高强制规则 - 纯英文输出】
+你生成的所有单据内容（subject、items_json 里的 title/details、note_text）必须是 100% 纯英文专业工程术语，严禁出现任何中文字符，无论用户用什么语言输入。
+翻译对照范例（照此风格翻译）：
+  中文「拆除 Manhole Cover 旧破瓷砖 (Block 1=1pc & Block 2=1pc)」→ 英文「Removal of existing damaged tiles on manhole cover (Block 1 = 1pc & Block 2 = 1pc)」
+  中文「安装新瓷砖」→ 英文「Installation of new high-durability tiles」
+  中文「报价包含材料人工，含垃圾清运」→ 英文「Quotation includes materials and labour; debris disposal included」
+
 【工作流】
-1. 调用 `check_doc_status(doc_no)` 检查是否重复。
-2. 如果未重复，调用 `create_official_pdf(...)` 生成文件。注意 `doc_type` 必须正确！
-3. 生成成功后，调用 `register_doc(doc_no, doc_type, client_name, total_amount)` 存入数据库。
+1. 先把用户输入的中文内容全部翻译成英文，再调用工具。
+2. 调用 `check_doc_status(doc_no)` 检查是否重复。
+3. 如果未重复，调用 `create_official_pdf(...)` 生成文件（doc_type 必须正确，内容必须全英文）。
+4. 生成成功后，调用 `register_doc(doc_no, doc_type, client_name, total_amount)` 存入数据库。
 
 公司规范：
 {COMPANY_KNOWLEDGE}
@@ -280,12 +297,16 @@ def run_multi_agent_system(user_message: str, force_mode: str = None):
     ]
 
     generated_pdf_path = None
+    _iter = 0
+    max_iter = 5  # 防止死循环，最多重试 5 次
 
-    # 循环处理 Tool Calls
-    while True:
+    while _iter < max_iter:
+        _iter += 1
         try:
+            # 注意：请将下面的模型名称替换为您实际使用的模型，例如 "llama-3.3-70b-versatile" 或 "deepseek-chat"
+            # 用户之前测试成功的是 "openai/gpt-oss-120b" (这通常是 OpenRouter 的格式)
             response = client.chat.completions.create(
-                model="openai/gpt-oss-120b", # Groq 最强全英文模型
+                model=os.environ.get("MODEL_NAME", "openai/gpt-oss-120b"), 
                 messages=messages,
                 tools=tools_schema,
                 tool_choice="auto",
@@ -294,36 +315,32 @@ def run_multi_agent_system(user_message: str, force_mode: str = None):
         except Exception as e:
             error_msg = str(e)
             if "429" in error_msg or "rate" in error_msg.lower():
-                time.sleep(5) # 遇到限流等待 5 秒重试
+                time.sleep(5)
                 continue
             else:
                 raise e
 
         message = response.choices[0].message
 
-        # 如果模型不再调用工具，说明任务完成，返回最终文本
         if not message.tool_calls:
             return message.content, generated_pdf_path
 
-        # 将模型的回复（包含 tool_calls）加入历史
         messages.append(message)
 
-        # 执行所有工具调用
         for tool_call in message.tool_calls:
             function_name = tool_call.function.name
             function_args = json.loads(tool_call.function.arguments)
             
-            # 调用本地函数
             function_response = AVAILABLE_FUNCTIONS[function_name](**function_args)
             
-            # 如果是生成 PDF，捕获路径
             if function_name == "create_official_pdf" and isinstance(function_response, str) and function_response.startswith("/tmp/"):
                 generated_pdf_path = function_response
 
-            # 将工具执行结果加入历史
             messages.append({
                 "tool_call_id": tool_call.id,
                 "role": "tool",
                 "name": function_name,
                 "content": str(function_response),
             })
+            
+    return "⚠️ Max iterations reached. Please check input.", generated_pdf_path
