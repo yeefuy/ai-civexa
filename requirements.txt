@@ -3,3 +3,4 @@ reportlab
 fastapi
 uvicorn
 python-telegram-bot
+mysql-connector-python
