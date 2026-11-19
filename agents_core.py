@@ -285,7 +285,7 @@ def run_multi_agent_system(user_message: str, force_mode: str = None):
     while True:
         try:
             response = client.chat.completions.create(
-                model="gemma2-9b-it", # Groq 最强全英文模型
+                model="openai/gpt-oss-120b", # Groq 最强全英文模型
                 messages=messages,
                 tools=tools_schema,
                 tool_choice="auto",
