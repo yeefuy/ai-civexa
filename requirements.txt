@@ -1,6 +1,6 @@
 groq
+psycopg2-binary
 reportlab
 fastapi
 uvicorn
 python-telegram-bot
-mysql-connector-python
