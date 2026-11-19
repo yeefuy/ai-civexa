@@ -5,7 +5,7 @@ import re
 import mysql.connector
 from mysql.connector import Error
 from datetime import datetime, timedelta
-from openai import OpenAI
+from groq import Groq  # <--- 改用 Groq 官方库
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -13,13 +13,10 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-# ================= 客户端初始化 =================
-# 注意：如果您使用的是 OpenRouter 或其他兼容 OpenAI 的平台，请修改 base_url
-# 如果您使用的是 Groq，base_url 应为 "https://api.groq.com/openai/v1"
-# 如果您使用的是 DeepSeek，base_url 应为 "https://api.deepseek.com"
-client = OpenAI(
-    api_key=os.environ.get("API_KEY"), # 请确保环境变量名与您的平台对应 (如 GROQ_API_KEY, OPENROUTER_API_KEY 等)
-    base_url=os.environ.get("API_BASE_URL", "https://api.groq.com/openai/v1") 
+# ================= Groq 客户端初始化 =================
+# 确保 Render 环境变量里有 GROQ_API_KEY
+client = Groq(
+    api_key=os.environ.get("GROQ_API_KEY")
 )
 
 # ================= 数据库配置 =================
@@ -204,7 +201,7 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     doc.build(story)
     return filename
 
-# ================= OpenAI 格式的 Tools 定义 =================
+# ================= Groq/OpenAI 格式的 Tools 定义 =================
 tools_schema = [
     {
         "type": "function",
@@ -303,10 +300,9 @@ def run_multi_agent_system(user_message: str, force_mode: str = None):
     while _iter < max_iter:
         _iter += 1
         try:
-            # 注意：请将下面的模型名称替换为您实际使用的模型，例如 "llama-3.3-70b-versatile" 或 "deepseek-chat"
-            # 用户之前测试成功的是 "openai/gpt-oss-120b" (这通常是 OpenRouter 的格式)
+            # 使用您截图里成功的模型名
             response = client.chat.completions.create(
-                model=os.environ.get("MODEL_NAME", "openai/gpt-oss-120b"), 
+                model="openai/gpt-oss-120b", 
                 messages=messages,
                 tools=tools_schema,
                 tool_choice="auto",
