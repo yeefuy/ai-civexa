@@ -6,7 +6,6 @@ from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from agents_core import run_multi_agent_system
 
-# 从环境变量读取配置
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OWNER_CHAT_ID = os.environ.get("OWNER_CHAT_ID", "")
 
@@ -17,15 +16,15 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
     user_text = update.message.text.strip()
     chat_id = update.message.chat_id
 
-    # 白名单检查 (可选)
     if OWNER_CHAT_ID and str(chat_id) != str(OWNER_CHAT_ID):
-        await update.message.reply_text("⛔ 此為 CIVEXA 內部 AI 管家，無權限用戶請聯繫管理員。")
+        await update.message.reply_text("⛔ 无权限。")
         return
 
-    # 强制模式识别
     force_mode = None
+    force_action = None
     actual_message = user_text
 
+    # 1. 识别指令
     if user_text.lower().startswith('/inv'):
         force_mode = "INVOICE"
         actual_message = user_text[4:].strip()
@@ -34,42 +33,43 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
         force_mode = "QUOTATION"
         actual_message = user_text[3:].strip()
         await context.bot.send_message(chat_id, "🔒 已强制切换至【估价单模式 QUOTATION】")
+    elif user_text.lower().startswith('/reg'):
+        force_action = "REGISTER"
+        actual_message = user_text[4:].strip()
+        await context.bot.send_message(chat_id, "📝 进入【手动登记模式】，只存号码不生成 PDF。")
+    elif user_text.lower().startswith('/sample'):
+        force_action = "SAMPLE"  # <--- 新增：样本模式
+        actual_message = "Generate a sample invoice for layout checking."
+        await context.bot.send_message(chat_id, "🎨 正在生成排版样本（不查重、不存库）...")
 
-    if not actual_message:
-        await update.message.reply_text("请输入具体内容，例如：/inv 给 Yanda 开 INV-10052...")
+    if not actual_message and force_action != "SAMPLE":
+        await update.message.reply_text("请输入内容。")
         return
 
-    # 显示正在输入
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-    # 调用 AI 核心逻辑
     try:
         reply_text, pdf_path = await asyncio.to_thread(
             run_multi_agent_system, 
             actual_message, 
-            force_mode=force_mode
+            force_mode=force_mode,
+            force_action=force_action
         )
         
-        # 发送文字回复
         if reply_text:
             await update.message.reply_text(reply_text)
 
-        # 发送 PDF 附件
         if pdf_path and os.path.exists(pdf_path):
             with open(pdf_path, "rb") as pdf_file:
                 await context.bot.send_document(chat_id=chat_id, document=pdf_file)
             os.remove(pdf_path)
             
     except Exception as e:
-        await update.message.reply_text(f"⚠️ 系統處理異常：{str(e)}")
+        await update.message.reply_text(f"⚠️ 系统异常：{str(e)}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动 Telegram Bot (Polling 模式)
     tg_app = Application.builder().token(TELEGRAM_TOKEN).build()
-    
-    # 【关键修复】只用一个 handler 处理所有文本消息（包括 /inv 和 /qt 开头的）
-    # 不再用 filters.COMMAND 过滤，让 handle_telegram_message 自己判断
     tg_app.add_handler(MessageHandler(filters.TEXT, handle_telegram_message))
     
     await tg_app.initialize()
