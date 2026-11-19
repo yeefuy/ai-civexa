@@ -231,7 +231,7 @@ def run_multi_agent_system(user_message: str, force_mode: str = None):
     config = types.GenerateContentConfig(system_instruction=system_prompt, tools=tools, temperature=0.2)
 
     # 自动重试与模型降级机制
-    models_to_try = ["gemini-3.8-flash", "gemini-3.6-flash"]
+    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash"]
     response = None
 
     for model_name in models_to_try:
