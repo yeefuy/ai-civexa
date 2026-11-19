@@ -285,7 +285,7 @@ def run_multi_agent_system(user_message: str, force_mode: str = None):
     while True:
         try:
             response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile", # Groq 最强全英文模型
+                model="llama-3.1-70b-versatile", # Groq 最强全英文模型
                 messages=messages,
                 tools=tools_schema,
                 tool_choice="auto",
