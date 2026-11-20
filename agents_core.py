@@ -135,55 +135,44 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     styles = getSampleStyleSheet()
     
     # ========== 专业字体层级系统 ==========
-    # Level 1: 公司名 - 20pt，加粗，深蓝，下方间距 15pt
     company_name_style = ParagraphStyle("CompanyName", parent=styles["Normal"], 
                                         fontName=BOLD_FONT, fontSize=20, alignment=1, 
                                         textColor=colors.HexColor("#1A365D"), spaceAfter=15)
     
-    # Level 2: 地址/注册号 - 8pt，常规，灰色，行距 11pt
     address_style = ParagraphStyle("Address", parent=styles["Normal"], 
                                    fontName=REG_FONT, fontSize=8, alignment=1, 
                                    textColor=colors.HexColor("#666666"), spaceAfter=3, leading=11)
     
-    # Level 3: 单据标题 - 16pt，加粗，蓝色，上下间距 20pt
     doc_title_style = ParagraphStyle("DocTitle", parent=styles["Normal"], 
                                      fontName=BOLD_FONT, fontSize=16, alignment=1, 
                                      textColor=colors.HexColor("#2B6CB0"), spaceBefore=20, spaceAfter=20)
     
-    # Level 4: 区块标题 - 10pt，加粗，深蓝
     section_header_style = ParagraphStyle("SectionHeader", parent=styles["Normal"], 
                                           fontName=BOLD_FONT, fontSize=10, 
                                           textColor=colors.HexColor("#1A365D"), spaceAfter=8)
     
-    # Level 5: 正文/明细 - 9pt，常规，黑色，行距 13pt
     body_style = ParagraphStyle("Body", parent=styles["Normal"], 
                                 fontName=REG_FONT, fontSize=9, leading=13)
     
-    # Level 6: 右侧信息 - 9pt，右对齐
     right_info_style = ParagraphStyle("RightInfo", parent=body_style, alignment=2)
     
-    # Level 7: 加粗正文 - 9pt，加粗
     bold_body_style = ParagraphStyle("BoldBody", parent=body_style, fontName=BOLD_FONT)
     
-    # Level 8: 右对齐金额 - 9pt，右对齐
     right_amount_style = ParagraphStyle("RightAmount", parent=body_style, alignment=2)
     
-    # Level 9: 总金额 - 9pt（和明细一样大），加粗，深蓝
+    # 关键：总金额 9pt（和明细一样大），只加粗+变色，不放大字号
     total_style = ParagraphStyle("Total", parent=body_style, 
                                  fontName=BOLD_FONT, alignment=2, 
                                  textColor=colors.HexColor("#1A365D"))
     
-    # Level 10: 小字注释 - 7pt，灰色
     small_note_style = ParagraphStyle("SmallNote", parent=styles["Normal"], 
                                       fontName=REG_FONT, fontSize=7, 
                                       textColor=colors.HexColor("#888888"), leading=9)
     
-    # Level 11: 条款 - 7.5pt，灰色，行距 10pt
     terms_style = ParagraphStyle("Terms", parent=styles["Normal"], 
                                  fontName=REG_FONT, fontSize=7.5, 
                                  textColor=colors.HexColor("#666666"), leading=10, spaceAfter=4)
     
-    # Level 12: 页脚 - 7pt，浅灰
     footer_style = ParagraphStyle("Footer", parent=styles["Normal"], 
                                   fontName=REG_FONT, fontSize=7, 
                                   textColor=colors.HexColor("#AAAAAA"), alignment=1)
@@ -293,7 +282,6 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
         if discount_amount > 0:
             calc_data.insert(1, [Paragraph("Less: Loyal Customer Discount:", body_style), Paragraph(f"(RM {discount_amount:.2f})", right_amount_style)])
         
-        # 关键修改：总金额用 9pt（和明细一样大），只加粗+变色，不放大字号
         calc_data.append([Paragraph("<b>TOTAL AMOUNT DUE:</b>", bold_body_style), Paragraph(f"<b>RM {total:.2f}</b>", total_style)])
         
         ct = Table(calc_data, colWidths=[350, 150])
@@ -342,7 +330,7 @@ tools_schema = [
     {"type": "function", "function": {"name": "get_next_doc_no", "description": "Get next available doc number", "parameters": {"type": "object", "properties": {"doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]}}, "required": ["doc_type"]}}},
     {"type": "function", "function": {"name": "check_doc_status", "description": "Check if doc exists", "parameters": {"type": "object", "properties": {"doc_no": {"type": "string"}}, "required": ["doc_no"]}}},
     {"type": "function", "function": {"name": "register_doc", "description": "Register doc to DB", "parameters": {"type": "object", "properties": {"doc_no": {"type": "string"}, "doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]}, "client_name": {"type": "string"}, "total_amount": {"type": "number"}}, "required": ["doc_no", "doc_type", "client_name", "total_amount"]}}},
-    {"type": "function", "function": {"name": "create_official_pdf", "description": "Generate PDF. ENGLISH ONLY.", "parameters": {"type": "object", "properties": {"client_name": {"type": "string"}, "client_attn": {"type": "string"}, "doc_no": {"type": "string"}, "subject": {"type": "string"}, "items_json": {"type": "string"}, "note_text": {"type": "string"}, "original_price": {"type": "number"}, "discount_amount": {"type": "number"}, "doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]}}, "required": ["client_name", "client_attn", "doc_no", "subject", "items_json", "original_price", "discount_amount", "doc_type"]}}}
+    {"type": "function", "function": {"name": "create_official_pdf", "description": "Generate PDF. ENGLISH ONLY.", "parameters": {"type": "object", "properties": {"client_name": {"type": "string"}, "client_attn": {"type": "string"}, "doc_no": {"type": "string"}, "subject": {"type": "string"}, "items_json": {"type": "string", "description": "JSON array of items. Each item must have 'title' and 'details' (array of strings)."}, "note_text": {"type": "string"}, "original_price": {"type": "number"}, "discount_amount": {"type": "number"}, "doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]}}, "required": ["client_name", "client_attn", "doc_no", "subject", "items_json", "original_price", "discount_amount", "doc_type"]}}}
 ]
 
 AVAILABLE_FUNCTIONS = {
@@ -352,7 +340,7 @@ AVAILABLE_FUNCTIONS = {
     "create_official_pdf": create_official_pdf,
 }
 
-# ================= 总指挥 =================
+# ================= 总指挥 (方案二：智能解析版) =================
 def run_multi_agent_system(user_message: str, force_mode: str = None, force_action: str = None):
     mode_instruction = ""
     if force_mode:
@@ -395,7 +383,33 @@ def run_multi_agent_system(user_message: str, force_mode: str = None, force_acti
 【工作流】
 1. 如果是 SAMPLE 模式：直接调用 `create_official_pdf` (用虚拟数据)。
 2. 如果是 REGISTER 模式：直接调用 `register_doc`。
-3. 如果是正常模式：查号 -> 查重 -> 生成 PDF -> 登记。
+3. 如果是正常模式：
+   a. 解析用户输入，提取：client_name, client_attn, doc_no (或自动查号), subject, items, original_price, discount_amount, note_text。
+   b. **关键：items 必须是 JSON 数组格式**，例如：
+      [
+        {{"title": "Staircase Tile Installation", "details": ["Supply and install ceramic tiles"]}},
+        {{"title": "Living Room Tile Installation", "details": ["Supply and install ceramic tiles"]}},
+        {{"title": "Kitchen Tile Installation", "details": ["Supply and install ceramic tiles"]}}
+      ]
+   c. 调用 `check_doc_status` 防重。
+   d. 调用 `create_official_pdf` (全英文)。
+   e. 调用 `register_doc`。
+
+【明细解析规则 - 重要！】
+用户可能用以下方式提供明细，你必须正确解析成 items_json 数组：
+- "明细：1. xxx 2. xxx 3. xxx" (数字+点号分隔)
+- "明细：\\n1. xxx\\n2. xxx\\n3. xxx" (换行分隔)
+- "明细：1. xxx; 2. xxx; 3. xxx" (分号分隔)
+- "Items: 1. xxx, 2. xxx, 3. xxx" (逗号分隔)
+- "明细：xxx, yyy, zzz" (无编号，直接逗号分隔)
+
+解析后，每项必须包含：
+- "title": 工程标题 (英文)
+- "details": 工程细节数组 (英文，可以是空数组 [])
+
+示例：
+用户输入："明细：1. 拆除旧瓷砖 2. 安装新瓷砖"
+你应生成：'[{{"title": "Removal of old tiles", "details": []}}, {{"title": "Installation of new tiles", "details": []}}]'
 
 公司规范：
 {COMPANY_KNOWLEDGE}
