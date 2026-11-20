@@ -112,7 +112,7 @@ def register_doc(doc_no: str, doc_type: str, client_name: str, total_amount: flo
     finally:
         if conn: conn.close()
 
-# ================= PDF 生成工具 (专业排版版) =================
+# ================= PDF 生成工具 (单页压缩版) =================
 def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
                         subject: str, items_json: str, note_text: str,
                         original_price: float, discount_amount: float,
@@ -130,29 +130,31 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     safe_client = "".join(c for c in client_name if c.isalnum() or c in (" ", "_")).rstrip()
     filename = f"/tmp/{doc_no}_{safe_client.replace(' ', '_')}.pdf"
 
-    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=50, leftMargin=50, topMargin=50, bottomMargin=50)
+    # 【关键修改】页边距从 50 改为 40，增加可用空间
+    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
     story = []
     styles = getSampleStyleSheet()
     
     # ========== 专业字体层级系统 ==========
     company_name_style = ParagraphStyle("CompanyName", parent=styles["Normal"], 
                                         fontName=BOLD_FONT, fontSize=20, alignment=1, 
-                                        textColor=colors.HexColor("#1A365D"), spaceAfter=15)
+                                        textColor=colors.HexColor("#1A365D"), spaceAfter=10)  # 从 15 改为 10
     
     address_style = ParagraphStyle("Address", parent=styles["Normal"], 
                                    fontName=REG_FONT, fontSize=8, alignment=1, 
-                                   textColor=colors.HexColor("#666666"), spaceAfter=3, leading=11)
+                                   textColor=colors.HexColor("#666666"), spaceAfter=2, leading=10)  # 从 3/11 改为 2/10
     
+    # 【关键修改】单据标题间距从 20 改为 8
     doc_title_style = ParagraphStyle("DocTitle", parent=styles["Normal"], 
                                      fontName=BOLD_FONT, fontSize=16, alignment=1, 
-                                     textColor=colors.HexColor("#2B6CB0"), spaceBefore=20, spaceAfter=20)
+                                     textColor=colors.HexColor("#2B6CB0"), spaceBefore=8, spaceAfter=8)
     
     section_header_style = ParagraphStyle("SectionHeader", parent=styles["Normal"], 
                                           fontName=BOLD_FONT, fontSize=10, 
-                                          textColor=colors.HexColor("#1A365D"), spaceAfter=8)
+                                          textColor=colors.HexColor("#1A365D"), spaceAfter=6)  # 从 8 改为 6
     
     body_style = ParagraphStyle("Body", parent=styles["Normal"], 
-                                fontName=REG_FONT, fontSize=9, leading=13)
+                                fontName=REG_FONT, fontSize=9, leading=12)  # 从 13 改为 12
     
     right_info_style = ParagraphStyle("RightInfo", parent=body_style, alignment=2)
     
@@ -160,7 +162,6 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     
     right_amount_style = ParagraphStyle("RightAmount", parent=body_style, alignment=2)
     
-    # 关键：总金额 9pt（和明细一样大），只加粗+变色，不放大字号
     total_style = ParagraphStyle("Total", parent=body_style, 
                                  fontName=BOLD_FONT, alignment=2, 
                                  textColor=colors.HexColor("#1A365D"))
@@ -171,7 +172,7 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     
     terms_style = ParagraphStyle("Terms", parent=styles["Normal"], 
                                  fontName=REG_FONT, fontSize=7.5, 
-                                 textColor=colors.HexColor("#666666"), leading=10, spaceAfter=4)
+                                 textColor=colors.HexColor("#666666"), leading=10, spaceAfter=3)  # 从 4 改为 3
     
     footer_style = ParagraphStyle("Footer", parent=styles["Normal"], 
                                   fontName=REG_FONT, fontSize=7, 
@@ -209,17 +210,17 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F8FAFC")), 
         ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor("#E2E8F0")),  
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('TOPPADDING', (0,0), (-1,-1), 12), 
-        ('BOTTOMPADDING', (0,0), (-1,-1), 12),
-        ('LEFTPADDING', (0,0), (-1,-1), 12),
-        ('RIGHTPADDING', (0,0), (-1,-1), 12),
+        ('TOPPADDING', (0,0), (-1,-1), 8),   # 从 12 改为 8
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8), # 从 12 改为 8
+        ('LEFTPADDING', (0,0), (-1,-1), 8),   # 从 12 改为 8
+        ('RIGHTPADDING', (0,0), (-1,-1), 8),  # 从 12 改为 8
     ]))
     story.append(mt)
-    story.append(Spacer(1, 20))
+    story.append(Spacer(1, 12))  # 从 20 改为 12
 
     # ========== 4. 工程范围 ==========
     story.append(Paragraph(f"<b>SUBJECT:</b> {subject}", bold_body_style))
-    story.append(Spacer(1, 15))
+    story.append(Spacer(1, 10))  # 从 15 改为 10
 
     # ========== 5. 表格 ==========
     if is_invoice:
@@ -261,16 +262,16 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
         ('TEXTCOLOR', (0,0), (-1,0), colors.white),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E0")),
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('TOPPADDING', (0,0), (-1,-1), 8),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('TOPPADDING', (0,0), (-1,-1), 6),   # 从 8 改为 6
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6), # 从 8 改为 6
     ]))
     story.append(wt)
-    story.append(Spacer(1, 15))
+    story.append(Spacer(1, 10))  # 从 15 改为 10
 
     # ========== 6. 备注 ==========
     if note_text:
         story.append(Paragraph(f"<i>Note: {note_text}</i>", ParagraphStyle("Note", parent=body_style, fontSize=8, textColor=colors.HexColor("#555555"))))
-        story.append(Spacer(1, 15))
+        story.append(Spacer(1, 10))  # 从 15 改为 10
 
     # ========== 7. 价格汇总 ==========
     total = original_price - discount_amount
@@ -288,23 +289,23 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
         ct.setStyle(TableStyle([
             ('LINEABOVE', (0,0), (-1,0), 0.5, colors.HexColor("#CBD5E0")),
             ('LINEBELOW', (0,-1), (-1,-1), 1.5, colors.HexColor("#1A365D")), 
-            ('TOPPADDING', (0,0), (-1,-1), 6),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+            ('TOPPADDING', (0,0), (-1,-1), 4),  # 从 6 改为 4
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4), # 从 6 改为 4
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ]))
         story.append(ct)
-        story.append(Spacer(1, 20))
+        story.append(Spacer(1, 12))  # 从 20 改为 12
 
     # ========== 8. 付款说明 & 条款 ==========
     if is_invoice:
         story.append(Paragraph("<b>PAYMENT INSTRUCTIONS</b>", section_header_style))
         story.append(Paragraph(f"Due: {due_str} (Within 7 days)<br/>Method: Bank Transfer / Cash / Cheque<br/>Bank: Maybank | Account Name: CIVEXA CONSTRUCTION<br/>Account No: 5142-0890-0031 | Reference: {doc_no}", body_style))
         story.append(Paragraph("State reference clearly to avoid processing delays.", small_note_style))
-        story.append(Spacer(1, 15))
+        story.append(Spacer(1, 10))  # 从 15 改为 10
         
         terms_text = "Payment due within 7 days from invoice date - Late payment may result in work suspension & additional charges - All works completed as per agreed specifications - Special loyal customer rate applied - Quality workmanship guaranteed"
         story.append(Paragraph(f"<b>TERMS & CONDITIONS:</b> {terms_text}", terms_style))
-        story.append(Spacer(1, 20))
+        story.append(Spacer(1, 12))  # 从 20 改为 12
         
     else:
         story.append(Paragraph("<b>TERMS & CONDITIONS</b>", section_header_style))
@@ -316,10 +317,10 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
         ]
         for term in terms_list:
             story.append(Paragraph(f"• {term}", terms_style))
-        story.append(Spacer(1, 20))
+        story.append(Spacer(1, 12))  # 从 20 改为 12
 
     # ========== 9. 页脚 ==========
-    story.append(Spacer(1, 30))
+    story.append(Spacer(1, 15))  # 从 30 改为 15
     story.append(Paragraph("Thank You For Your Business! | CIVEXA CONSTRUCTION | CIDB Registered Contractor", footer_style))
 
     doc.build(story)
@@ -340,7 +341,7 @@ AVAILABLE_FUNCTIONS = {
     "create_official_pdf": create_official_pdf,
 }
 
-# ================= 总指挥 (方案二：智能解析版) =================
+# ================= 总指挥 =================
 def run_multi_agent_system(user_message: str, force_mode: str = None, force_action: str = None):
     mode_instruction = ""
     if force_mode:
@@ -397,7 +398,7 @@ def run_multi_agent_system(user_message: str, force_mode: str = None, force_acti
 
 【明细解析规则 - 重要！】
 用户可能用以下方式提供明细，你必须正确解析成 items_json 数组：
-- "明细：1. xxx 2. xxx 3. xxx" (数字+点号分隔)
+- "明细：1. xxx 2. xxx 3. xxx" (数字 + 点号分隔)
 - "明细：\\n1. xxx\\n2. xxx\\n3. xxx" (换行分隔)
 - "明细：1. xxx; 2. xxx; 3. xxx" (分号分隔)
 - "Items: 1. xxx, 2. xxx, 3. xxx" (逗号分隔)
