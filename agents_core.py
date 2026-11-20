@@ -112,12 +112,12 @@ def register_doc(doc_no: str, doc_type: str, client_name: str, total_amount: flo
     finally:
         if conn: conn.close()
 
-# ================= PDF 生成工具 (修复名字重复 + 地址显示) =================
+# ================= PDF 生成工具 (修复版：名字不重复 + 地址显示) =================
 def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
                         subject: str, items_json: str, note_text: str,
                         original_price: float, discount_amount: float,
                         doc_type: str = "INVOICE",
-                        client_address: str = "") -> str:  # 新增地址参数
+                        client_address: str = "") -> str:
     
     _check_text = (subject or "") + (note_text or "") + str(items_json)
     if re.search(r'[\u4e00-\u9fff]', _check_text):
@@ -196,16 +196,13 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     story.append(Paragraph(f"<b>{doc_title}</b>", doc_title_style))
 
     # ========== 3. 单据信息区 (修复：名字不重复，地址显示) ==========
-    # 构建 BILL TO 内容
-    bill_to_lines = [f"<b>BILL TO:</b>"]
-    bill_to_lines.append(f"<b>{client_name}</b>")  # 第一行：客户名
+    bill_to_lines = ["<b>BILL TO:</b>"]
+    bill_to_lines.append(f"<b>{client_name}</b>")
     
-    # 第二行：地址（如果有）
     if client_address:
         bill_to_lines.append(client_address)
     
-    # 第三行：Attn（联系人，只有当联系人和客户名不同时才显示）
-    if client_attn and client_attn.lower() != client_name.lower():
+    if client_attn and client_attn.strip().lower() != client_name.strip().lower():
         bill_to_lines.append(f"Attn: {client_attn}")
     
     meta_left = "<br/>".join(bill_to_lines)
@@ -337,23 +334,72 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     doc.build(story)
     return filename
 
-# ================= Tools 定义 (增加 client_address 字段) =================
+# ================= Tools 定义 (语法修复版) =================
 tools_schema = [
-    {"type": "function", "function": {"name": "get_next_doc_no", "description": "Get next available doc number", "parameters": {"type": "object", "properties": {"doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]}}, "required": ["doc_type"]}}},
-    {"type": "function", "function": {"name": "check_doc_status", "description": "Check if doc exists", "parameters": {"type": "object", "properties": {"doc_no": {"type": "string"}}, "required": ["doc_no"]}}},
-    {"type": "function", "function": {"name": "register_doc", "description": "Register doc to DB", "parameters": {"type": "object", "properties": {"doc_no": {"type": "string"}, "doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]}, "client_name": {"type": "string"}, "total_amount": {"type": "number"}}, "required": ["doc_no", "doc_type", "client_name", "total_amount"]}}},
-    {"type": "function", "function": {"name": "create_official_pdf", "description": "Generate PDF. ENGLISH ONLY.", "parameters": {"type": "object", "properties": {
-        "client_name": {"type": "string"},
-        "client_attn": {"type": "string"},
-        "client_address": {"type": "string", "description": "Client address (optional). If provided, will be displayed under client name in BILL TO section."},
-        "doc_no": {"type": "string"},
-        "subject": {"type": "string"},
-        "items_json": {"type": "string", "description": "JSON array of items. Each item must have 'title' and 'details' (array of strings)."},
-        "note_text": {"type": "string"},
-        "original_price": {"type": "number"},
-        "discount_amount": {"type": "number"},
-        "doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]}
-    }, "required": ["client_name", "client_attn", "doc_no", "subject", "items_json", "original_price", "discount_amount", "doc_type"]}}
+    {
+        "type": "function",
+        "function": {
+            "name": "get_next_doc_no",
+            "description": "Get next available doc number",
+            "parameters": {
+                "type": "object",
+                "properties": {"doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]}},
+                "required": ["doc_type"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_doc_status",
+            "description": "Check if doc exists",
+            "parameters": {
+                "type": "object",
+                "properties": {"doc_no": {"type": "string"}},
+                "required": ["doc_no"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "register_doc",
+            "description": "Register doc to DB",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "doc_no": {"type": "string"},
+                    "doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]},
+                    "client_name": {"type": "string"},
+                    "total_amount": {"type": "number"}
+                },
+                "required": ["doc_no", "doc_type", "client_name", "total_amount"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_official_pdf",
+            "description": "Generate PDF. ENGLISH ONLY.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "client_name": {"type": "string"},
+                    "client_attn": {"type": "string"},
+                    "client_address": {"type": "string", "description": "Client address. Displayed under client name in BILL TO section."},
+                    "doc_no": {"type": "string"},
+                    "subject": {"type": "string"},
+                    "items_json": {"type": "string", "description": "JSON array of items. Each item must have 'title' and 'details' (array of strings)."},
+                    "note_text": {"type": "string"},
+                    "original_price": {"type": "number"},
+                    "discount_amount": {"type": "number"},
+                    "doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]}
+                },
+                "required": ["client_name", "client_attn", "doc_no", "subject", "items_json", "original_price", "discount_amount", "doc_type"]
+            }
+        }
+    }
 ]
 
 AVAILABLE_FUNCTIONS = {
@@ -430,10 +476,6 @@ def run_multi_agent_system(user_message: str, force_mode: str = None, force_acti
 解析后，每项必须包含：
 - "title": 工程标题 (英文)
 - "details": 工程细节数组 (英文，可以是空数组 [])
-
-示例：
-用户输入："明细：1. 拆除旧瓷砖 2. 安装新瓷砖"
-你应生成：'[{{"title": "Removal of old tiles", "details": []}}, {{"title": "Installation of new tiles", "details": []}}]'
 
 【BILL TO 区块规则 - 重要！】
 1. **客户名 (client_name)**：显示在 BILL TO 第一行，加粗。
