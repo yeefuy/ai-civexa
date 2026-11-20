@@ -112,11 +112,12 @@ def register_doc(doc_no: str, doc_type: str, client_name: str, total_amount: flo
     finally:
         if conn: conn.close()
 
-# ================= PDF 生成工具 (单页压缩版) =================
+# ================= PDF 生成工具 (修复名字重复 + 地址显示) =================
 def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
                         subject: str, items_json: str, note_text: str,
                         original_price: float, discount_amount: float,
-                        doc_type: str = "INVOICE") -> str:
+                        doc_type: str = "INVOICE",
+                        client_address: str = "") -> str:  # 新增地址参数
     
     _check_text = (subject or "") + (note_text or "") + str(items_json)
     if re.search(r'[\u4e00-\u9fff]', _check_text):
@@ -130,7 +131,6 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     safe_client = "".join(c for c in client_name if c.isalnum() or c in (" ", "_")).rstrip()
     filename = f"/tmp/{doc_no}_{safe_client.replace(' ', '_')}.pdf"
 
-    # 【关键修改】页边距从 50 改为 40，增加可用空间
     doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
     story = []
     styles = getSampleStyleSheet()
@@ -138,23 +138,22 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     # ========== 专业字体层级系统 ==========
     company_name_style = ParagraphStyle("CompanyName", parent=styles["Normal"], 
                                         fontName=BOLD_FONT, fontSize=20, alignment=1, 
-                                        textColor=colors.HexColor("#1A365D"), spaceAfter=10)  # 从 15 改为 10
+                                        textColor=colors.HexColor("#1A365D"), spaceAfter=10)
     
     address_style = ParagraphStyle("Address", parent=styles["Normal"], 
                                    fontName=REG_FONT, fontSize=8, alignment=1, 
-                                   textColor=colors.HexColor("#666666"), spaceAfter=2, leading=10)  # 从 3/11 改为 2/10
+                                   textColor=colors.HexColor("#666666"), spaceAfter=2, leading=10)
     
-    # 【关键修改】单据标题间距从 20 改为 8
     doc_title_style = ParagraphStyle("DocTitle", parent=styles["Normal"], 
                                      fontName=BOLD_FONT, fontSize=16, alignment=1, 
                                      textColor=colors.HexColor("#2B6CB0"), spaceBefore=8, spaceAfter=8)
     
     section_header_style = ParagraphStyle("SectionHeader", parent=styles["Normal"], 
                                           fontName=BOLD_FONT, fontSize=10, 
-                                          textColor=colors.HexColor("#1A365D"), spaceAfter=6)  # 从 8 改为 6
+                                          textColor=colors.HexColor("#1A365D"), spaceAfter=6)
     
     body_style = ParagraphStyle("Body", parent=styles["Normal"], 
-                                fontName=REG_FONT, fontSize=9, leading=12)  # 从 13 改为 12
+                                fontName=REG_FONT, fontSize=9, leading=12)
     
     right_info_style = ParagraphStyle("RightInfo", parent=body_style, alignment=2)
     
@@ -172,7 +171,7 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     
     terms_style = ParagraphStyle("Terms", parent=styles["Normal"], 
                                  fontName=REG_FONT, fontSize=7.5, 
-                                 textColor=colors.HexColor("#666666"), leading=10, spaceAfter=3)  # 从 4 改为 3
+                                 textColor=colors.HexColor("#666666"), leading=10, spaceAfter=3)
     
     footer_style = ParagraphStyle("Footer", parent=styles["Normal"], 
                                   fontName=REG_FONT, fontSize=7, 
@@ -196,8 +195,20 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
     # ========== 2. 单据标题 ==========
     story.append(Paragraph(f"<b>{doc_title}</b>", doc_title_style))
 
-    # ========== 3. 单据信息区 ==========
-    meta_left = f"<b>BILL TO:</b><br/><b>{client_name}</b><br/>Attn: {client_attn}"
+    # ========== 3. 单据信息区 (修复：名字不重复，地址显示) ==========
+    # 构建 BILL TO 内容
+    bill_to_lines = [f"<b>BILL TO:</b>"]
+    bill_to_lines.append(f"<b>{client_name}</b>")  # 第一行：客户名
+    
+    # 第二行：地址（如果有）
+    if client_address:
+        bill_to_lines.append(client_address)
+    
+    # 第三行：Attn（联系人，只有当联系人和客户名不同时才显示）
+    if client_attn and client_attn.lower() != client_name.lower():
+        bill_to_lines.append(f"Attn: {client_attn}")
+    
+    meta_left = "<br/>".join(bill_to_lines)
     
     if is_invoice:
         meta_right = f"<b>INVOICE INFORMATION:</b><br/>Invoice Number: <b>{doc_no}</b><br/>Invoice Date: {inv_str}<br/>Due Date: {due_str}<br/>Payment: Bank Transfer / Cash / Cheque"
@@ -210,17 +221,17 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F8FAFC")), 
         ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor("#E2E8F0")),  
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('TOPPADDING', (0,0), (-1,-1), 8),   # 从 12 改为 8
-        ('BOTTOMPADDING', (0,0), (-1,-1), 8), # 从 12 改为 8
-        ('LEFTPADDING', (0,0), (-1,-1), 8),   # 从 12 改为 8
-        ('RIGHTPADDING', (0,0), (-1,-1), 8),  # 从 12 改为 8
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('LEFTPADDING', (0,0), (-1,-1), 8),
+        ('RIGHTPADDING', (0,0), (-1,-1), 8),
     ]))
     story.append(mt)
-    story.append(Spacer(1, 12))  # 从 20 改为 12
+    story.append(Spacer(1, 12))
 
     # ========== 4. 工程范围 ==========
     story.append(Paragraph(f"<b>SUBJECT:</b> {subject}", bold_body_style))
-    story.append(Spacer(1, 10))  # 从 15 改为 10
+    story.append(Spacer(1, 10))
 
     # ========== 5. 表格 ==========
     if is_invoice:
@@ -262,16 +273,16 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
         ('TEXTCOLOR', (0,0), (-1,0), colors.white),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E0")),
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('TOPPADDING', (0,0), (-1,-1), 6),   # 从 8 改为 6
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6), # 从 8 改为 6
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
     ]))
     story.append(wt)
-    story.append(Spacer(1, 10))  # 从 15 改为 10
+    story.append(Spacer(1, 10))
 
     # ========== 6. 备注 ==========
     if note_text:
         story.append(Paragraph(f"<i>Note: {note_text}</i>", ParagraphStyle("Note", parent=body_style, fontSize=8, textColor=colors.HexColor("#555555"))))
-        story.append(Spacer(1, 10))  # 从 15 改为 10
+        story.append(Spacer(1, 10))
 
     # ========== 7. 价格汇总 ==========
     total = original_price - discount_amount
@@ -289,23 +300,23 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
         ct.setStyle(TableStyle([
             ('LINEABOVE', (0,0), (-1,0), 0.5, colors.HexColor("#CBD5E0")),
             ('LINEBELOW', (0,-1), (-1,-1), 1.5, colors.HexColor("#1A365D")), 
-            ('TOPPADDING', (0,0), (-1,-1), 4),  # 从 6 改为 4
-            ('BOTTOMPADDING', (0,0), (-1,-1), 4), # 从 6 改为 4
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ]))
         story.append(ct)
-        story.append(Spacer(1, 12))  # 从 20 改为 12
+        story.append(Spacer(1, 12))
 
     # ========== 8. 付款说明 & 条款 ==========
     if is_invoice:
         story.append(Paragraph("<b>PAYMENT INSTRUCTIONS</b>", section_header_style))
         story.append(Paragraph(f"Due: {due_str} (Within 7 days)<br/>Method: Bank Transfer / Cash / Cheque<br/>Bank: Maybank | Account Name: CIVEXA CONSTRUCTION<br/>Account No: 5142-0890-0031 | Reference: {doc_no}", body_style))
         story.append(Paragraph("State reference clearly to avoid processing delays.", small_note_style))
-        story.append(Spacer(1, 10))  # 从 15 改为 10
+        story.append(Spacer(1, 10))
         
         terms_text = "Payment due within 7 days from invoice date - Late payment may result in work suspension & additional charges - All works completed as per agreed specifications - Special loyal customer rate applied - Quality workmanship guaranteed"
         story.append(Paragraph(f"<b>TERMS & CONDITIONS:</b> {terms_text}", terms_style))
-        story.append(Spacer(1, 12))  # 从 20 改为 12
+        story.append(Spacer(1, 12))
         
     else:
         story.append(Paragraph("<b>TERMS & CONDITIONS</b>", section_header_style))
@@ -317,21 +328,32 @@ def create_official_pdf(client_name: str, client_attn: str, doc_no: str,
         ]
         for term in terms_list:
             story.append(Paragraph(f"• {term}", terms_style))
-        story.append(Spacer(1, 12))  # 从 20 改为 12
+        story.append(Spacer(1, 12))
 
     # ========== 9. 页脚 ==========
-    story.append(Spacer(1, 15))  # 从 30 改为 15
+    story.append(Spacer(1, 15))
     story.append(Paragraph("Thank You For Your Business! | CIVEXA CONSTRUCTION | CIDB Registered Contractor", footer_style))
 
     doc.build(story)
     return filename
 
-# ================= Tools 定义 =================
+# ================= Tools 定义 (增加 client_address 字段) =================
 tools_schema = [
     {"type": "function", "function": {"name": "get_next_doc_no", "description": "Get next available doc number", "parameters": {"type": "object", "properties": {"doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]}}, "required": ["doc_type"]}}},
     {"type": "function", "function": {"name": "check_doc_status", "description": "Check if doc exists", "parameters": {"type": "object", "properties": {"doc_no": {"type": "string"}}, "required": ["doc_no"]}}},
     {"type": "function", "function": {"name": "register_doc", "description": "Register doc to DB", "parameters": {"type": "object", "properties": {"doc_no": {"type": "string"}, "doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]}, "client_name": {"type": "string"}, "total_amount": {"type": "number"}}, "required": ["doc_no", "doc_type", "client_name", "total_amount"]}}},
-    {"type": "function", "function": {"name": "create_official_pdf", "description": "Generate PDF. ENGLISH ONLY.", "parameters": {"type": "object", "properties": {"client_name": {"type": "string"}, "client_attn": {"type": "string"}, "doc_no": {"type": "string"}, "subject": {"type": "string"}, "items_json": {"type": "string", "description": "JSON array of items. Each item must have 'title' and 'details' (array of strings)."}, "note_text": {"type": "string"}, "original_price": {"type": "number"}, "discount_amount": {"type": "number"}, "doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]}}, "required": ["client_name", "client_attn", "doc_no", "subject", "items_json", "original_price", "discount_amount", "doc_type"]}}}
+    {"type": "function", "function": {"name": "create_official_pdf", "description": "Generate PDF. ENGLISH ONLY.", "parameters": {"type": "object", "properties": {
+        "client_name": {"type": "string"},
+        "client_attn": {"type": "string"},
+        "client_address": {"type": "string", "description": "Client address (optional). If provided, will be displayed under client name in BILL TO section."},
+        "doc_no": {"type": "string"},
+        "subject": {"type": "string"},
+        "items_json": {"type": "string", "description": "JSON array of items. Each item must have 'title' and 'details' (array of strings)."},
+        "note_text": {"type": "string"},
+        "original_price": {"type": "number"},
+        "discount_amount": {"type": "number"},
+        "doc_type": {"type": "string", "enum": ["INVOICE", "QUOTATION"]}
+    }, "required": ["client_name", "client_attn", "doc_no", "subject", "items_json", "original_price", "discount_amount", "doc_type"]}}
 ]
 
 AVAILABLE_FUNCTIONS = {
@@ -364,6 +386,7 @@ def run_multi_agent_system(user_message: str, force_mode: str = None, force_acti
         3. **必须立即调用 `create_official_pdf`**，使用以下虚拟数据：
            - client_name: "Sample Client Sdn Bhd"
            - client_attn: "Mr. Sample"
+           - client_address: "123, Jalan Sample, 12345 City, State"
            - doc_no: "SAMPLE-001"
            - doc_type: "INVOICE"
            - subject: "Sample Layout Check - Repair Works"
@@ -385,7 +408,7 @@ def run_multi_agent_system(user_message: str, force_mode: str = None, force_acti
 1. 如果是 SAMPLE 模式：直接调用 `create_official_pdf` (用虚拟数据)。
 2. 如果是 REGISTER 模式：直接调用 `register_doc`。
 3. 如果是正常模式：
-   a. 解析用户输入，提取：client_name, client_attn, doc_no (或自动查号), subject, items, original_price, discount_amount, note_text。
+   a. 解析用户输入，提取：client_name, client_attn, client_address (如果有), doc_no (或自动查号), subject, items, original_price, discount_amount, note_text。
    b. **关键：items 必须是 JSON 数组格式**，例如：
       [
         {{"title": "Staircase Tile Installation", "details": ["Supply and install ceramic tiles"]}},
@@ -411,6 +434,20 @@ def run_multi_agent_system(user_message: str, force_mode: str = None, force_acti
 示例：
 用户输入："明细：1. 拆除旧瓷砖 2. 安装新瓷砖"
 你应生成：'[{{"title": "Removal of old tiles", "details": []}}, {{"title": "Installation of new tiles", "details": []}}]'
+
+【BILL TO 区块规则 - 重要！】
+1. **客户名 (client_name)**：显示在 BILL TO 第一行，加粗。
+2. **地址 (client_address)**：如果用户提供了地址，显示在客户名下方第二行。
+3. **联系人 (client_attn)**：只有当联系人和客户名**不同时**才显示在第三行，格式 "Attn: xxx"。
+   - 如果客户名是 "Mr. Lim Eng Soon"，联系人也是 "Mr. Lim Eng Soon"，则**不显示** Attn 行。
+   - 如果客户名是 "ABC Company"，联系人是 "Mr. Lim"，则显示 "Attn: Mr. Lim"。
+
+示例：
+用户输入："给 Mr. Lim Eng Soon 开发票，地址 No. 1, Jalan Perdana Residence 1, 68100 Selayang, Selangor Darul Ehsan"
+你应提取：
+- client_name: "Mr. Lim Eng Soon"
+- client_address: "No. 1, Jalan Perdana Residence 1, 68100 Selayang, Selangor Darul Ehsan"
+- client_attn: "Mr. Lim Eng Soon" (与 client_name 相同，PDF 中不显示 Attn 行)
 
 公司规范：
 {COMPANY_KNOWLEDGE}
